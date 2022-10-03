@@ -11,6 +11,7 @@ This module is responsible for the folling task:
 
 from typing import Optional, List, Dict, Any
 from collections import defaultdict
+import threading
 import numpy as np
 from pandas import DataFrame
 from neo4j import GraphDatabase
@@ -71,6 +72,7 @@ class Neo4jInstance:
             When the Neo4j URI is not valid.
         """
         encrypted = kwargs.get('encrypted') or ''
+        self.results = defaultdict(int)
         try:
             if encrypted != '':
                 self.__driver = GraphDatabase.driver(
@@ -130,7 +132,7 @@ class Neo4jInstance:
             session = self.__driver.session()
         try:
             result = session.read_transaction(
-                self._read_transaction,query=query,**kwargs)
+                self._read_transaction_function,query=query,**kwargs)
         except ServiceUnavailable as exception:
             raise ServiceUnavailable() from exception
         except ClientError as exception:
@@ -176,7 +178,7 @@ class Neo4jInstance:
         try:
             for query in queries:
                 result = session.write_transaction(
-                    self._write_transaction, query=query,
+                    self._write_transaction_function, query=query,
                     **kwargs).counters.__dict__
                 for key, value in result.items():
                     if key != '_contains_updates':
@@ -224,6 +226,7 @@ class Neo4jInstance:
     def execute_write_queries_with_data(self, queries: List[str], data: DataFrame,
                                         database: Optional[str] = None,
                                         batch_size: Optional[int] = 1,
+                                        parallel: Optional[bool] = False,
                                         **kwargs: Optional[Dict[str, Any]]
                                        ) -> Dict[str, int]:
         """Execute a list of write queries using data to update a specific database.
@@ -258,7 +261,6 @@ class Neo4jInstance:
                 When the number of batch sizes to split the DataFrame on
                 is larger than the number of rows in it.
         """
-        results=defaultdict(int)
         if batch_size > data.shape[0]:
             raise ValueError(
                 "The batch size cannot be greater than the number of rows in the data.")
@@ -269,21 +271,17 @@ class Neo4jInstance:
         data_chunks = np.array_split(data,batch_size)
         for _,rows in enumerate(data_chunks):
             rows_dict = {'rows': rows.fillna(value="").to_dict('records')}
-            try:
-                for query in queries:
-                    result = session.write_transaction(
-                        self._write_transaction, query=query,
-                        rows=rows_dict['rows'], **kwargs).counters.__dict__
-                    for key, value in result.items():
-                        if key != '_contains_updates':
-                            results[key] += value
-            except ClientError as exception:
-                raise ClientError() from exception
-            except ServiceUnavailable as exception:
-                raise ServiceUnavailable() from exception
-            finally:
-                session.close()
-        return results
+            for query in queries:
+                try:
+                    self._write_transaction(database, rows_dict['rows'],query,
+                                            **kwargs)
+                except ClientError as exception:
+                    raise ClientError() from exception
+                except ServiceUnavailable as exception:
+                    raise ServiceUnavailable() from exception
+                finally:
+                    session.close()
+        return self.results
 
     def execute_write_query_with_data(self,
                                       query: str, data: DataFrame,
@@ -333,13 +331,25 @@ class Neo4jInstance:
     def __exit__(self, ctx_type, ctx_value, ctx_traceback):
         self.close()
 
+    def _write_transaction(self, database, rows, query, **kwargs):
+        if database:
+            session = self.__driver.session(database=database)
+        else:
+            session = self.__driver.session()
+        results = session.write_transaction(
+        self._write_transaction_function, query=query,
+        rows=rows, **kwargs).counters.__dict__
+        for key, value in results.items():
+            if key != '_contains_updates':
+                self.results[key] += value
+
     @staticmethod
-    def _write_transaction(transaction, query, **kwargs):
+    def _write_transaction_function(transaction, query, **kwargs):
         result = transaction.run(query, **kwargs)
         return result.consume()
 
     @staticmethod
-    def _read_transaction(transaction, query, **kwargs):
+    def _read_transaction_function(transaction, query, **kwargs):
         results = transaction.run(query, **kwargs)
         data = DataFrame(results.values(), columns=results.keys())
         return data
