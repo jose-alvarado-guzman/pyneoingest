@@ -72,7 +72,7 @@ class Neo4jInstance:
             When the Neo4j URI is not valid.
         """
         encrypted = kwargs.get('encrypted') or ''
-        self.results = defaultdict(int)
+        self.__results = defaultdict(int)
         try:
             if encrypted != '':
                 self.__driver = GraphDatabase.driver(
@@ -281,7 +281,9 @@ class Neo4jInstance:
                     raise ServiceUnavailable() from exception
                 finally:
                     session.close()
-        return self.results
+        results = self.__results.copy()
+        self.__results.clear()
+        return results
 
     def execute_write_query_with_data(self,
                                       query: str, data: DataFrame,
@@ -341,7 +343,7 @@ class Neo4jInstance:
         rows=rows, **kwargs).counters.__dict__
         for key, value in results.items():
             if key != '_contains_updates':
-                self.results[key] += value
+                self.__results[key] += value
 
     @staticmethod
     def _write_transaction_function(transaction, query, **kwargs):
