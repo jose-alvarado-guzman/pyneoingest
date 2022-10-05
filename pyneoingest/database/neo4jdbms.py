@@ -169,20 +169,11 @@ class Neo4jInstance:
         """
         session = self._get_session(database)
         results = defaultdict(int)
-        try:
-            for query in queries:
-                result = session.write_transaction(
-                    self._write_transaction_function, query=query,
-                    **kwargs).counters.__dict__
-                for key, value in result.items():
-                    if key != '_contains_updates':
-                        results[key] += value
-        except ServiceUnavailable() as exception:
-            raise ServiceUnavailable() from exception
-        except ClientError as exception:
-            raise ClientError() from exception
-        finally:
-            session.close()
+        for query in queries:
+            result = self._execute_write(session, query, **kwargs)
+            for key, value in result.items():
+                if key != '_contains_updates':
+                    results[key] += value
         return results
 
     def execute_write_query(self, query: str,
@@ -273,20 +264,12 @@ class Neo4jInstance:
                     thread.start()
                     thread.join()
                 else:
-                    try:
-                        session = self._get_session(database)
-                        result = session.write_transaction(self._write_transaction_function,
-                                                           query, rows=rows_dict['rows'],
-                                                           **kwargs).counters.__dict__
-                        for key, value in result.items():
-                            if key != '_contains_updates':
-                                self.__results[key] += value
-                    except ClientError as exception:
-                        raise ClientError() from exception
-                    except ServiceUnavailable as exception:
-                        raise ServiceUnavailable() from exception
-                    finally:
-                        session.close()
+                    session = self._get_session(database)
+                    result = self._execute_write(session, query, rows=rows_dict['rows'],
+                                                 **kwargs)
+                    for key, value in result.items():
+                        if key != '_contains_updates':
+                            self.__results[key] += value
         results = self.__results.copy()
         self.__results.clear()
         return results
@@ -381,3 +364,24 @@ class Neo4jInstance:
         results = transaction.run(query, **kwargs)
         data = DataFrame(results.values(), columns=results.keys())
         return data
+
+    def _execute_write(self, session, query,
+                       rows: Optional[Dict[str, Any]] = None,
+                      **kwargs
+                      ):
+        try:
+            if rows:
+                results = session.write_transaction(
+                    self._write_transaction_function, query,
+                    rows = rows, **kwargs).counters.__dict__
+            else:
+                results = session.write_transaction(
+                    self._write_transaction_function, query,
+                    **kwargs).counters.__dict__
+        except ServiceUnavailable() as exception:
+            raise ServiceUnavailable() from exception
+        except ClientError as exception:
+            raise ClientError() from exception
+        finally:
+            session.close()
+        return results
