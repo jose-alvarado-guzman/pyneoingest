@@ -53,25 +53,30 @@ class TestNeo4jInstance(unittest.TestCase):
         self.assertEqual(solution, result)
 
         # Testing the execute_write_query_with_data method using the people.csv
-        # dataset and batch_size=5
+        # dataset, partitions=5 and parallel=True
         people_file = os.path.join(test_dir,'people.csv')
         people_df = pd.read_csv(people_file)
         people_num = people_df.shape[0]
         property_num = people_num * people_df.shape[1]
         result = self.graph.execute_write_query_with_data(self.queries['queries']['load_person'],
-                                           people_df, self.queries['database'],batch_size=5)
+                                                          people_df,
+                                                          self.queries['database'],
+                                                          partitions=5,
+                                                          parallel=True)
         solution = {'nodes_created':people_num,'labels_added':people_num,
                     'properties_set':property_num}
         self.assertEqual(solution, result)
 
         # Testing the execute_write_query_with_data method using the movies.csv
-        # dataset
+        # dataset and partitions=2
         movie_file = os.path.join(test_dir,'movies.csv')
         movie_df = pd.read_csv(movie_file)
         movie_num = movie_df.shape[0]
         property_num = movie_num * movie_df.shape[1] + movie_num
         result = self.graph.execute_write_query_with_data(self.queries['queries']['load_movie'],
-                                           movie_df, self.queries['database'])
+                                                          movie_df, self.queries['database'],
+                                                          partitions=2
+                                                         )
         solution = {'nodes_created':movie_num,'labels_added':movie_num,
                     'properties_set':property_num}
         self.assertEqual(solution, result)

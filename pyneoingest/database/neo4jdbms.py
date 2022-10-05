@@ -38,12 +38,12 @@ class Neo4jInstance:
             Execute a write query to a specific database.
         execute_write_query_with_data(self, query: str, data: DataFrame,
                                             database: Optional[str] = None,
-                                            batch_size: Optional[int] = 1,
+                                            partitions: Optional[int] = 1,
                                             kwargs: Optional[Dict[str, Any]]) -> None
             Execute a write query using data on a DataFrame.
         execute_write_queries_with_data(self, query: List[str], data: DataFrame,
                                             database: Optional[str] = None,
-                                            batch_size: Optional[int] = 1,
+                                            partitions: Optional[int] = 1,
                                             kwargs: Optional[Dict[str, Any]]) -> None
             Execute a list of write queries using data on a DataFrame.
     """
@@ -126,10 +126,7 @@ class Neo4jInstance:
         ClientError
             When there is a Cypher syntax error or datatype error.
     """
-        if database:
-            session = self.__driver.session(database=database)
-        else:
-            session = self.__driver.session()
+        session = self._get_session(database)
         try:
             result = session.read_transaction(
                 self._read_transaction_function,query=query,**kwargs)
@@ -170,11 +167,8 @@ class Neo4jInstance:
             ClientError
                 When their is a Cypher syntax error or datatype error.
         """
+        session = self._get_session(database)
         results = defaultdict(int)
-        if database:
-            session = self.__driver.session(database=database)
-        else:
-            session = self.__driver.session()
         try:
             for query in queries:
                 result = session.write_transaction(
@@ -225,8 +219,8 @@ class Neo4jInstance:
 
     def execute_write_queries_with_data(self, queries: List[str], data: DataFrame,
                                         database: Optional[str] = None,
-                                        batch_size: Optional[int] = 1,
-                                        parallel: Optional[bool] = False,
+                                        partitions: Optional[int] = 1,
+                                        concurrency: Optional[bool] = False,
                                         **kwargs: Optional[Dict[str, Any]]
                                        ) -> Dict[str, int]:
         """Execute a list of write queries using data to update a specific database.
@@ -240,8 +234,10 @@ class Neo4jInstance:
             database : str, optional
                 Name of the Neo4j database of which to execute the transactions.
                 If not provided the default database is going to be use.
-            batch_size : int, optional
+            partitions : int, optional
                 The number of partitions in which to split the data frame.
+            concurrency : bool, optional
+                Whether to use multple threads to load the data.
             kwargs : Dict[str, Any], optional
                 Extra arguments containing optional cypher parameters.
 
@@ -261,26 +257,36 @@ class Neo4jInstance:
                 When the number of batch sizes to split the DataFrame on
                 is larger than the number of rows in it.
         """
-        if batch_size > data.shape[0]:
+        if partitions > data.shape[0]:
             raise ValueError(
                 "The batch size cannot be greater than the number of rows in the data.")
-        if database:
-            session = self.__driver.session(database=database)
-        else:
-            session = self.__driver.session()
-        data_chunks = np.array_split(data,batch_size)
-        for _,rows in enumerate(data_chunks):
+        data_chunks = np.array_split(data,partitions)
+        for i,rows in enumerate(data_chunks):
             rows_dict = {'rows': rows.fillna(value="").to_dict('records')}
             for query in queries:
-                try:
-                    self._write_transaction(database, rows_dict['rows'],query,
-                                            **kwargs)
-                except ClientError as exception:
-                    raise ClientError() from exception
-                except ServiceUnavailable as exception:
-                    raise ServiceUnavailable() from exception
-                finally:
-                    session.close()
+                if concurrency and partitions > 1:
+                    thread_name = f'pyingest-{i + 1}'
+                    thread = threading.Thread(target=self._write_transaction,
+                                     args=(database,
+                                           rows_dict['rows'],query),
+                                           kwargs=kwargs,name=thread_name)
+                    thread.start()
+                    thread.join()
+                else:
+                    try:
+                        session = self._get_session(database)
+                        result = session.write_transaction(self._write_transaction_function,
+                                                           query, rows=rows_dict['rows'],
+                                                           **kwargs).counters.__dict__
+                        for key, value in result.items():
+                            if key != '_contains_updates':
+                                self.__results[key] += value
+                    except ClientError as exception:
+                        raise ClientError() from exception
+                    except ServiceUnavailable as exception:
+                        raise ServiceUnavailable() from exception
+                    finally:
+                        session.close()
         results = self.__results.copy()
         self.__results.clear()
         return results
@@ -288,7 +294,8 @@ class Neo4jInstance:
     def execute_write_query_with_data(self,
                                       query: str, data: DataFrame,
                                       database: Optional[str] = None,
-                                      batch_size: Optional[int] = 1,
+                                      partitions: Optional[int] = 1,
+                                      concurrency: Optional[bool] = False,
                                       **kwargs: Optional[Dict[str, Any]]
                                      ) -> Dict[str, int]:
         """Execute a write query with data to update a specific database.
@@ -302,8 +309,10 @@ class Neo4jInstance:
             database : str, optional
                 Name of the Neo4j database of which to execute the transaction.
                 If not provided the default database is going to be use.
-            batch_size : int, optional
+            partitions : int, optional
                 The number of partitions in which to split the data frame.
+            concurrency : bool, optional
+                Whether to use multple threads to load the data.
             kwargs : Dict[str, Any], optional
                 Extra arguments containing optional cypher parameters.
 
@@ -324,8 +333,15 @@ class Neo4jInstance:
                 is larger than the number of rows in it.
         """
         result = self.execute_write_queries_with_data(
-            [query], data,database, batch_size, **kwargs)
+            [query], data,database, partitions, concurrency, **kwargs)
         return result
+
+    def _get_session(self, database: Optional[str] = None):
+        if database:
+            session = self.__driver.session(database=database)
+        else:
+            session = self.__driver.session()
+        return session
 
     def __enter__(self):
         return self.__driver
@@ -334,16 +350,26 @@ class Neo4jInstance:
         self.close()
 
     def _write_transaction(self, database, rows, query, **kwargs):
+        lock = threading.Lock()
         if database:
             session = self.__driver.session(database=database)
         else:
             session = self.__driver.session()
-        results = session.write_transaction(
-        self._write_transaction_function, query=query,
-        rows=rows, **kwargs).counters.__dict__
-        for key, value in results.items():
-            if key != '_contains_updates':
-                self.__results[key] += value
+        try:
+            results = session.write_transaction(
+            self._write_transaction_function, query=query,
+            rows=rows, **kwargs).counters.__dict__
+            for key, value in results.items():
+                if key != '_contains_updates':
+                    lock.acquire()
+                    self.__results[key] += value
+                    lock.release()
+        except ClientError as exception:
+            raise ClientError() from exception
+        except ServiceUnavailable as exception:
+            raise ServiceUnavailable() from exception
+        finally:
+            session.close()
 
     @staticmethod
     def _write_transaction_function(transaction, query, **kwargs):
