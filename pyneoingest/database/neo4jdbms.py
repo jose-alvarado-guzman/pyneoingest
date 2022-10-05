@@ -12,6 +12,7 @@ This module is responsible for the folling task:
 from typing import Optional, List, Dict, Any
 from collections import defaultdict
 import threading
+import logging
 import numpy as np
 from pandas import DataFrame
 from neo4j import GraphDatabase
@@ -19,6 +20,15 @@ from neo4j.exceptions import ServiceUnavailable
 from neo4j.exceptions import AuthError
 from neo4j.exceptions import ClientError
 from neo4j.exceptions import ConfigurationError
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+#    handlers=[
+#        logging.FileHandler("debug.log"),
+#        logging.StreamHandler(sys.stdout)
+#    ]
+)
 
 class Neo4jInstance:
     """Class use to represent a connection to Neo4j.
@@ -174,7 +184,8 @@ class Neo4jInstance:
             for key, value in result.items():
                 if key != '_contains_updates':
                     results[key] += value
-        return results
+        logging.info(f'Loading stats: {dict(results)}')
+        return dict(results)
 
     def execute_write_query(self, query: str,
                             database: Optional[str] = None,
@@ -272,6 +283,7 @@ class Neo4jInstance:
                             self.__results[key] += value
         results = self.__results.copy()
         self.__results.clear()
+        logging.info(f'Loading stats: {dict(results)}')
         return results
 
     def execute_write_query_with_data(self,
@@ -334,6 +346,7 @@ class Neo4jInstance:
 
     def _write_transaction(self, database, rows, query, **kwargs):
         lock = threading.Lock()
+        thread_name = threading.current_thread().name
         if database:
             session = self.__driver.session(database=database)
         else:
@@ -342,11 +355,14 @@ class Neo4jInstance:
             results = session.write_transaction(
             self._write_transaction_function, query=query,
             rows=rows, **kwargs).counters.__dict__
+            results.pop('_contains_updates','')
             for key, value in results.items():
-                if key != '_contains_updates':
-                    lock.acquire()
-                    self.__results[key] += value
-                    lock.release()
+                lock.acquire()
+                self.__results[key] += value
+                lock.release()
+            logging.info(
+                f'Thread {thread_name} loading stats: {dict(results)}'
+            )
         except ClientError as exception:
             raise ClientError() from exception
         except ServiceUnavailable as exception:

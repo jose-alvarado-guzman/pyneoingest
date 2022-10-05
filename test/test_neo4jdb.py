@@ -53,7 +53,7 @@ class TestNeo4jInstance(unittest.TestCase):
         self.assertEqual(solution, result)
 
         # Testing the execute_write_query_with_data method using the people.csv
-        # dataset, partitions=5 and parallel=True
+        # dataset, partitions=5 and concurrency=True
         people_file = os.path.join(test_dir,'people.csv')
         people_df = pd.read_csv(people_file)
         people_num = people_df.shape[0]
@@ -62,7 +62,7 @@ class TestNeo4jInstance(unittest.TestCase):
                                                           people_df,
                                                           self.queries['database'],
                                                           partitions=5,
-                                                          parallel=True)
+                                                          concurrency=True)
         solution = {'nodes_created':people_num,'labels_added':people_num,
                     'properties_set':property_num}
         self.assertEqual(solution, result)
