@@ -21,15 +21,6 @@ from neo4j.exceptions import AuthError
 from neo4j.exceptions import ClientError
 from neo4j.exceptions import ConfigurationError
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s",
-#    handlers=[
-#        logging.FileHandler("debug.log"),
-#        logging.StreamHandler(sys.stdout)
-#    ]
-)
-
 class Neo4jInstance:
     """Class use to represent a connection to Neo4j.
 
@@ -83,6 +74,8 @@ class Neo4jInstance:
         """
         encrypted = kwargs.get('encrypted') or ''
         self.__results = defaultdict(int)
+        self._get_logger()
+
         try:
             if encrypted != '':
                 self.__driver = GraphDatabase.driver(
@@ -184,7 +177,7 @@ class Neo4jInstance:
             for key, value in result.items():
                 if key != '_contains_updates':
                     results[key] += value
-        logging.info(f'Loading stats: {dict(results)}')
+        self.__logger.info(f'Loading stats: {dict(results)}')
         return dict(results)
 
     def execute_write_query(self, query: str,
@@ -283,7 +276,7 @@ class Neo4jInstance:
                             self.__results[key] += value
         results = self.__results.copy()
         self.__results.clear()
-        logging.info(f'Loading stats: {dict(results)}')
+        self.__logger.info(f'Loading stats: {dict(results)}')
         return results
 
     def execute_write_query_with_data(self,
@@ -360,7 +353,7 @@ class Neo4jInstance:
                 lock.acquire()
                 self.__results[key] += value
                 lock.release()
-            logging.info(
+            self.__logger.info(
                 f'Thread {thread_name} loading stats: {dict(results)}'
             )
         except ClientError as exception:
@@ -401,3 +394,7 @@ class Neo4jInstance:
         finally:
             session.close()
         return results
+
+    def _get_logger(self):
+        self.__logger = logging.getLogger('pyneoingest.neo4jdbms')
+        self.__logger.setLevel(logging.INFO)
