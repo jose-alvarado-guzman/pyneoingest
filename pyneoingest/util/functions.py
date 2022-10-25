@@ -1,15 +1,13 @@
 # -*- coding: utf-8 -*-
 """Module containing utility functions used by other modules in the package."""
 
-import os
 import functools
-import threading
 import time
+import logging
 from datetime import datetime
-from urllib.parse import urlparse
+from typing import Tuple, Any, Callable, List
 from urllib.request import urlopen
 from urllib.error import URLError, HTTPError
-from typing import Tuple, Any, Callable, List
 
 def get_file_name(file_type: str, file_parts: List[str]) -> str:
     """Create a string representation of a file name.
@@ -34,6 +32,25 @@ def get_file_name(file_type: str, file_parts: List[str]) -> str:
     file_name = '_'.join(file_name_parts) + '.' + file_type
     return file_name
 
+def get_logger(logger_name : str, logger_level: int) -> logging.Logger:
+    """Get a logger with a specific name and level
+
+    Parameters
+    ----------
+    logger_name : str
+        String use to name the logger.
+    logger_level : int
+        Level to use for logging.
+        The options are logging.[DEBUG, INFO, WARNING, ERROR, CRITICAL]
+
+    Returns
+    -------
+    Logger
+        Logger instance to use.
+    """
+    logger = logging.getLogger(logger_name)
+    logger.setLevel(logger_level)
+    return logger
 
 def is_reachable_url(url: str) -> bool:
     """Verified if a url exists or if a url is reachable.
@@ -56,9 +73,8 @@ def is_reachable_url(url: str) -> bool:
         code = error.code
     return code == 200
 
-
-def timing(function: Callable) -> Tuple[Any, float]:
-    """Prints the timing for the annotated function
+def timing(function : Callable) -> Tuple[Any, float]:
+    """Times annotated functions
 
     Parameters
     ----------
@@ -72,11 +88,9 @@ def timing(function: Callable) -> Tuple[Any, float]:
     """
     @functools.wraps(function)
     def wrap(*args, **kwargs) -> Tuple[Any, float]:
-        thread_id = threading.get_ident()
-        start = time.time()
-        ret = function(*args, **kwargs)
-        end = time.time()
-        diff = end - start * 1.0
-        print(f'Thread [{thread_id}] "{function.__name__}" function took {diff:.3f} s')
-        return ret, diff
+        start = time.perf_counter()
+        result = function(*args, **kwargs)
+        end = time.perf_counter()
+        elapsed_time = end - start * 1.0
+        return result, elapsed_time
     return wrap

@@ -5,8 +5,8 @@ pre_ingest:
 
 datafiles:
   # Person
-  - url: file:///Users/josealvarado/Python_Devel/PyIngest/pyneoingest/Test/people.csv
-    cql:
+  - url: file:///Users/josealvarado-guzman/Python_Devel/PyNeoIngest/test/people.csv
+    cypher:
       - |
         WITH $rows AS rows
         UNWIND rows AS row
@@ -16,8 +16,8 @@ datafiles:
                 p.name=row.name,
                 p.birthYear=toInteger(row.birthYear)
   # Movie
-  - url: file:///Users/josealvarado/Python_Devel/PyIngest/pyneoingest/Test/movies.csv
-    cql:
+  - url: file:////Users/josealvarado-guzman/Python_Devel/PyNeoIngest/test/movies.csv
+    cypher:
       - |
         WITH $rows AS rows
         UNWIND rows AS row
@@ -29,8 +29,8 @@ datafiles:
                 m.releaseYear=toInteger(row.releaseYear),
                 m.genres=split(row.genres,':')
   # Role
-  - url: file:///Users/josealvarado/Python_Devel/PyIngest/pyneoingest/Test/roles.csv
-    cql:
+  - url: file:////Users/josealvarado-guzman/Python_Devel/PyNeoIngest/test/roles.csv
+    cypher:
       - |
         WITH $rows AS rows
         UNWIND rows AS row
@@ -38,4 +38,3 @@ datafiles:
         MERGE(p)-[r:ACTED_IN]->(m)
         ON CREATE
           SET r.character=split(row.character,':')
-        

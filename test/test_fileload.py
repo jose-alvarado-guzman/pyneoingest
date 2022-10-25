@@ -63,7 +63,7 @@ class TestFileloadYaml(unittest.TestCase):
     """
     def setUp(self):
         """Set up the YAML file fullpath."""
-        file_name = 'configuration.yaml'
+        file_name = 'load_files.yaml'
         self.file = os.path.join(test_dir,file_name)
 
     def test_load_yaml(self):
@@ -83,6 +83,40 @@ class TestFileloadYaml(unittest.TestCase):
         required_keys = ['neo4j_user','neo4j_password','neo4j_uri','database']
         with self.assertRaises(ValueError):
             fileload.load_yaml_file(self.file,required_keys)
+
+class TestDataFile(unittest.TestCase):
+    """Test the datafile module.
+
+    Methods
+    -------
+    setUp():
+        Set up the YAML file fullpath.
+    test_load_yaml():
+        Test the corrent loading of a YAML file with and without required keys.
+    test_load_yaml_exception()
+        Test that when the YAML file does not contains the required keys it
+        should raise a ValueError exception.
+    """
+    def setUp(self):
+        """Set up the YAML file fullpath."""
+        file_name = 'load_files.yaml'
+        self.file = os.path.join(test_dir,file_name)
+
+    def test_datafile_file_scheme_csv_format(self):
+        """Test datafile for a file scheme and csv format."""
+        yaml_file = fileload.load_yaml_file(self.file)
+        data_file = fileload.DataFile(yaml_file['datafiles'][0])
+        self.assertEqual(data_file.scheme,'file')
+        self.assertEqual(data_file.format,'csv')
+        data_file.close()
+
+    def test_datafile_file_scheme_zip_format(self):
+        """Test datafile for a file scheme and csv format."""
+        yaml_file = fileload.load_yaml_file(self.file)
+        data_file = fileload.DataFile(yaml_file['datafiles'][0])
+        self.assertEqual(data_file.scheme,'file')
+        self.assertEqual(data_file.format,'csv')
+        data_file.close()
 
 if __name__ == '__main__':
     unittest.main()

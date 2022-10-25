@@ -20,6 +20,7 @@ from neo4j.exceptions import ServiceUnavailable
 from neo4j.exceptions import AuthError
 from neo4j.exceptions import ClientError
 from neo4j.exceptions import ConfigurationError
+from .context import get_logger
 
 class Neo4jInstance:
     """Class use to represent a connection to Neo4j.
@@ -74,7 +75,7 @@ class Neo4jInstance:
         """
         encrypted = kwargs.get('encrypted') or ''
         self.__results = defaultdict(int)
-        self._get_logger()
+        self.__logger = get_logger('pyneoingest', logging.INFO)
 
         try:
             if encrypted != '':
@@ -332,7 +333,7 @@ class Neo4jInstance:
         return session
 
     def __enter__(self):
-        return self.__driver
+        return self
 
     def __exit__(self, ctx_type, ctx_value, ctx_traceback):
         self.close()
@@ -394,7 +395,3 @@ class Neo4jInstance:
         finally:
             session.close()
         return results
-
-    def _get_logger(self):
-        self.__logger = logging.getLogger('pyneoingest.neo4jdbms')
-        self.__logger.setLevel(logging.INFO)
