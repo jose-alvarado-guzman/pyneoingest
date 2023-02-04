@@ -42,11 +42,11 @@ class TestNeo4jInstance(unittest.TestCase):
         """Close the neo4j driver and delete the test data."""
         queries = ["CALL apoc.schema.assert({},{})","MATCH(n) DELETE n"]
         self.graph.execute_write_queries(queries, self.queries['database'])
-        self.graph.close()
 
     def test_neo4j_instance(self):
         """Test all methods of the Neo4jInstance class."""
         # Testing the execute_write_queries method with the pre_ingest queries
+        print('Constraints')
         result = self.graph.execute_write_queries(self.queries['pre_ingest'],
                                         self.queries['database'])
         solution = {'constraints_added':2}
@@ -58,11 +58,12 @@ class TestNeo4jInstance(unittest.TestCase):
         people_df = pd.read_csv(people_file)
         people_num = people_df.shape[0]
         property_num = people_num * people_df.shape[1]
+        print('Parallel')
         result = self.graph.execute_write_query_with_data(self.queries['queries']['load_person'],
                                                           people_df,
                                                           self.queries['database'],
                                                           partitions=5,
-                                                          concurrency=True)
+                                                          parallel=True)
         solution = {'nodes_created':people_num,'labels_added':people_num,
                     'properties_set':property_num}
         self.assertEqual(solution, result)
@@ -73,6 +74,7 @@ class TestNeo4jInstance(unittest.TestCase):
         movie_df = pd.read_csv(movie_file)
         movie_num = movie_df.shape[0]
         property_num = movie_num * movie_df.shape[1] + movie_num
+        print('Partitions')
         result = self.graph.execute_write_query_with_data(self.queries['queries']['load_movie'],
                                                           movie_df, self.queries['database'],
                                                           partitions=2
@@ -83,6 +85,7 @@ class TestNeo4jInstance(unittest.TestCase):
 
         # Testing the execute_read_query method
         query = "MATCH(p) RETURN count(*) AS node_num"
+        print('Read')
         result = self.graph.execute_read_query(query,self.queries['database'])
         solution = people_num + movie_num
         self.assertEqual(solution, result['node_num'][0])
@@ -90,7 +93,11 @@ class TestNeo4jInstance(unittest.TestCase):
         # Test the execute_read_query_using cypher parameters
         movie = "The Matrix"
         query = "MATCH(m:Movie) WHERE m.title=$movie_name RETURN m.title AS movie"
+        print('Parameters')
         result = self.graph.execute_read_query(query,
                                                self.queries['database'],
                                                movie_name=movie)
         self.assertEqual(movie,result['movie'][0])
+
+if __name__ == '__main__':
+    unittest.main()

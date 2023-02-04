@@ -2,16 +2,16 @@
 """Module responsible for handling Neo4j transactions.
 
 This module is responsible for the folling task:
-  - Create a Neo4j driver connection.
+  - Create a Neo4j driver connection or connections if executed in parallel.
   - Handle write and read queries (with and without Cypher parameters)
     to Neo4j using transaction functions.
   - Ingest data into Neo4j with the provided Pandas DataFrame and Cypher query.
-  - Close the driver connection to Neo4j.
+  - Close the driver connections to Neo4j.
 """
 
 from typing import Optional, List, Dict, Any
 from collections import defaultdict
-import threading
+import multiprocessing as mp
 import logging
 import numpy as np
 from pandas import DataFrame
@@ -22,31 +22,118 @@ from neo4j.exceptions import ClientError
 from neo4j.exceptions import ConfigurationError
 from .context import get_logger
 
+def _get_driver(neo_info : Dict[str, str]):
+    try:
+        if neo_info['encrypted'] != '':
+            driver = GraphDatabase.driver(
+                neo_info['uri'],
+                auth=(neo_info['user'], neo_info['password']),
+                encrypted=neo_info['encrypted'])
+        else:
+            driver = GraphDatabase.driver(
+                neo_info['uri'],
+                auth=(neo_info['user'], neo_info['password']))
+    except ServiceUnavailable as exception:
+        raise ServiceUnavailable() from exception
+    except AuthError as exception:
+        raise  AuthError() from exception
+    except ConfigurationError as exception:
+        raise ConfigurationError() from exception
+    return driver
+
+def _get_session(driver, database: Optional[str] = None):
+    if database:
+        session = driver.session(database=database)
+    else:
+        session = driver.session()
+    return session
+
+def _write_transaction_function(transaction, query, **kwargs):
+    result = transaction.run(query, **kwargs)
+    return result.consume()
+
+def _read_transaction_function(transaction, query, **kwargs):
+    results = transaction.run(query, **kwargs)
+    data = DataFrame(results.values(), columns=results.keys())
+    return data
+
+def _execute_write(session, query,
+                   rows: Optional[Dict[str, Any]] = None,
+                   parameters: Optional[Dict[str, Any]] = None
+                  ):
+    if parameters:
+        params = parameters
+    else:
+        params = {}
+    try:
+        if rows:
+            results = session.write_transaction(
+                _write_transaction_function, query,
+                rows = rows, **params).counters.__dict__
+        else:
+            results = session.write_transaction(
+                _write_transaction_function, query,
+                **params).counters.__dict__
+    except ServiceUnavailable() as exception:
+        raise ServiceUnavailable() from exception
+    except ClientError as exception:
+        raise ClientError() from exception
+    return results
+
+def _execute_write_parallel(neo_info, database, query,
+                   rows: Optional[Dict[str, Any]] = None,
+                   parameters: Optional[Dict[str, Any]] = None
+                  ):
+    if parameters:
+        params = parameters
+    else:
+        params = {}
+    with _get_driver(neo_info) as driver:
+        with _get_session(driver, database) as session:
+            try:
+                if rows:
+                    results = session.write_transaction(
+                        _write_transaction_function, query,
+                        rows = rows, **params).counters.__dict__
+                else:
+                    results = session.write_transaction(
+                        _write_transaction_function, query,
+                        **params).counters.__dict__
+            except ServiceUnavailable() as exception:
+                raise ServiceUnavailable() from exception
+            except ClientError as exception:
+                raise ClientError() from exception
+    return results
+
 class Neo4jInstance:
-    """Class use to represent a connection to Neo4j.
+    """Class use to handle Neo4j requests.
 
         Methods
         -------
-        close()
-            Close the Neo4j connection.
         execute_read_query(query: str,database Optional[str],
                            kwargs Optional[Dict[str, Any]]) -> DataFrame
             Execute a read query to a specific database.
         execute_write_queries(queries: List[str], database: Optional[str],
                             kwargs: Optional[Dict[str, Any]]) -> None
-            Execute a list of write query to a specific database.
+            Execute a list of write queries to a specific database.
         execute_write_query(query: str, database: Optional[str],
                             kwargs: Optional[Dict[str, Any]]) -> None
             Execute a write query to a specific database.
         execute_write_query_with_data(self, query: str, data: DataFrame,
-                                            database: Optional[str] = None,
-                                            partitions: Optional[int] = 1,
-                                            kwargs: Optional[Dict[str, Any]]) -> None
+                                      database: Optional[str] = None,
+                                      partitions: Optional[int] = 1,
+                                      parallel: Optional[bool] = False,
+                                      workers: Optional[int] = None,
+                                      parameters: Optional[Dict[str, Any]]
+                                      ) -> Dict[str, int]
             Execute a write query using data on a DataFrame.
         execute_write_queries_with_data(self, query: List[str], data: DataFrame,
-                                            database: Optional[str] = None,
-                                            partitions: Optional[int] = 1,
-                                            kwargs: Optional[Dict[str, Any]]) -> None
+                                        database: Optional[str] = None,
+                                        partitions: Optional[int] = 1,
+                                        parallel: Optional[bool] = False,
+                                        workers: Optional[int] = None,
+                                        parameters: Optional[Dict[str, Any]]
+                                        ) -> Dict[str, int]
             Execute a list of write queries using data on a DataFrame.
     """
     def __init__(self, uri: str, user: str, password: str,
@@ -73,33 +160,15 @@ class Neo4jInstance:
         ConfigurationError
             When the Neo4j URI is not valid.
         """
-        encrypted = kwargs.get('encrypted') or ''
+
+        self.neo_info = {}
+        self.neo_info['uri'] = uri
+        self.neo_info['user'] = user
+        self.neo_info['password'] = password
+        self.neo_info['encrypted'] = kwargs.get('encrypted') or ''
         self.__results = defaultdict(int)
         self.__logger = get_logger('pyneoingest', logging.INFO)
 
-        try:
-            if encrypted != '':
-                self.__driver = GraphDatabase.driver(
-                    uri,auth=(user, password),
-                    encrypted=encrypted)
-            else:
-                self.__driver = GraphDatabase.driver(
-                    uri,auth=(user, password))
-        except ServiceUnavailable as exception:
-            raise ServiceUnavailable() from exception
-        except AuthError as exception:
-            raise  AuthError() from exception
-        except ConfigurationError as exception:
-            raise ConfigurationError() from exception
-
-    def close(self) -> None:
-        """Close the Neo4j connection.
-
-            Is extremely important to always call this method to close the
-            connection when all transactions had been completed.
-        """
-        if self.__driver is not None:
-            self.__driver.close()
 
     def execute_read_query(self, query: str,
                            database: Optional[str] = None,
@@ -130,16 +199,15 @@ class Neo4jInstance:
         ClientError
             When there is a Cypher syntax error or datatype error.
     """
-        session = self._get_session(database)
-        try:
-            result = session.read_transaction(
-                self._read_transaction_function,query=query,**kwargs)
-        except ServiceUnavailable as exception:
-            raise ServiceUnavailable() from exception
-        except ClientError as exception:
-            raise ClientError() from exception
-        finally:
-            session.close()
+        with _get_driver(self.neo_info) as driver:
+            with _get_session(driver, database) as session:
+                try:
+                    result = session.read_transaction(
+                        _read_transaction_function,query=query,**kwargs)
+                except ServiceUnavailable as exception:
+                    raise ServiceUnavailable() from exception
+                except ClientError as exception:
+                    raise ClientError() from exception
         return result
 
     def execute_write_queries(self, queries: List[str],
@@ -171,14 +239,15 @@ class Neo4jInstance:
             ClientError
                 When their is a Cypher syntax error or datatype error.
         """
-        session = self._get_session(database)
         results = defaultdict(int)
-        for query in queries:
-            result = self._execute_write(session, query, **kwargs)
-            for key, value in result.items():
-                if key != '_contains_updates':
-                    results[key] += value
-        self.__logger.info(f'Loading stats: {dict(results)}')
+        with _get_driver(self.neo_info) as driver:
+            with _get_session(driver, database) as session:
+                for query in queries:
+                    result = _execute_write(session, query, **kwargs)
+                    for key, value in result.items():
+                        if key != '_contains_updates':
+                            results[key] += value
+                self.__logger.info(f'Loading stats: {dict(results)}')
         return dict(results)
 
     def execute_write_query(self, query: str,
@@ -216,8 +285,9 @@ class Neo4jInstance:
     def execute_write_queries_with_data(self, queries: List[str], data: DataFrame,
                                         database: Optional[str] = None,
                                         partitions: Optional[int] = 1,
-                                        concurrency: Optional[bool] = False,
-                                        **kwargs: Optional[Dict[str, Any]]
+                                        parallel: Optional[bool] = False,
+                                        workers: Optional[int] = None,
+                                        parameters: Optional[Dict[str, Any]] = None
                                        ) -> Dict[str, int]:
         """Execute a list of write queries using data to update a specific database.
 
@@ -232,9 +302,11 @@ class Neo4jInstance:
                 If not provided the default database is going to be use.
             partitions : int, optional
                 The number of partitions in which to split the data frame.
-            concurrency : bool, optional
-                Whether to use multple threads to load the data.
-            kwargs : Dict[str, Any], optional
+            parallel : bool, optional
+                Wheather to execute the load in parallel.
+            workers : int, optional
+                Number of processes to spawn to load the data.
+            parameters : Dict[str, Any], optional
                 Extra arguments containing optional cypher parameters.
 
             Returns
@@ -257,35 +329,49 @@ class Neo4jInstance:
             raise ValueError(
                 "The batch size cannot be greater than the number of rows in the data.")
         data_chunks = np.array_split(data,partitions)
-        for i,rows in enumerate(data_chunks):
-            rows_dict = {'rows': rows.fillna(value="").to_dict('records')}
+        if parameters:
+            params = parameters
+        else:
+            params = {}
+        if parallel:
+            if workers and workers > 0 and workers <= mp.cpu_count():
+                workers_num = workers
+            else:
+                workers_num = mp.cpu_count()
             for query in queries:
-                if concurrency and partitions > 1:
-                    thread_name = f'pyingest-{i + 1}'
-                    thread = threading.Thread(target=self._write_transaction,
-                                     args=(database,
-                                           rows_dict['rows'],query),
-                                           kwargs=kwargs,name=thread_name)
-                    thread.start()
-                    thread.join()
-                else:
-                    session = self._get_session(database)
-                    result = self._execute_write(session, query, rows=rows_dict['rows'],
-                                                 **kwargs)
-                    for key, value in result.items():
-                        if key != '_contains_updates':
-                            self.__results[key] += value
-        results = self.__results.copy()
+                with mp.Pool(workers_num) as worker_pool:
+                    results = worker_pool.starmap(
+                        _execute_write_parallel,
+                        [(self.neo_info, database,query, d.fillna(value='').to_dict('records'),
+                          params) for d in data_chunks]
+                    )
+        else:
+            results = []
+            with _get_driver(self.neo_info) as driver:
+                with _get_session(driver, database) as session:
+                    for rows in data_chunks:
+                        rows_dict = {'rows': rows.fillna(value="").to_dict('records')}
+                        for query in queries:
+                            results.append(_execute_write(session,
+                                                          query,
+                                                          rows_dict['rows'],
+                                                          params))
+        for result in results:
+            for key, value in result.items():
+                if key != '_contains_updates':
+                    self.__results[key] += value
+        results = dict(self.__results.copy())
         self.__results.clear()
-        self.__logger.info(f'Loading stats: {dict(results)}')
+        self.__logger.info(f'Loading stats: {results}')
         return results
 
     def execute_write_query_with_data(self,
                                       query: str, data: DataFrame,
                                       database: Optional[str] = None,
                                       partitions: Optional[int] = 1,
-                                      concurrency: Optional[bool] = False,
-                                      **kwargs: Optional[Dict[str, Any]]
+                                      parallel: Optional[bool] = False,
+                                      workers: Optional[int] = None,
+                                      parameters: Optional[Dict[str, Any]] = None
                                      ) -> Dict[str, int]:
         """Execute a write query with data to update a specific database.
 
@@ -300,9 +386,11 @@ class Neo4jInstance:
                 If not provided the default database is going to be use.
             partitions : int, optional
                 The number of partitions in which to split the data frame.
-            concurrency : bool, optional
-                Whether to use multple threads to load the data.
-            kwargs : Dict[str, Any], optional
+            parallel : bool, optional
+                Wheather to execute the load in parallel.
+            workers : int, optional
+                Number of processes to spawn to load the data.
+            parameters : Dict[str, Any], optional
                 Extra arguments containing optional cypher parameters.
 
             Returns
@@ -321,77 +409,10 @@ class Neo4jInstance:
                 When the number of batch sizes to split the DataFrame on
                 is larger than the number of rows in it.
         """
+        if parameters:
+            params = parameters
+        else:
+            params = {}
         result = self.execute_write_queries_with_data(
-            [query], data,database, partitions, concurrency, **kwargs)
+            [query], data,database, partitions, parallel, workers, params)
         return result
-
-    def _get_session(self, database: Optional[str] = None):
-        if database:
-            session = self.__driver.session(database=database)
-        else:
-            session = self.__driver.session()
-        return session
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, ctx_type, ctx_value, ctx_traceback):
-        self.close()
-
-    def _write_transaction(self, database, rows, query, **kwargs):
-        lock = threading.Lock()
-        thread_name = threading.current_thread().name
-        if database:
-            session = self.__driver.session(database=database)
-        else:
-            session = self.__driver.session()
-        try:
-            results = session.write_transaction(
-            self._write_transaction_function, query=query,
-            rows=rows, **kwargs).counters.__dict__
-            results.pop('_contains_updates','')
-            for key, value in results.items():
-                lock.acquire()
-                self.__results[key] += value
-                lock.release()
-            self.__logger.info(
-                f'Thread {thread_name} loading stats: {dict(results)}'
-            )
-        except ClientError as exception:
-            raise ClientError() from exception
-        except ServiceUnavailable as exception:
-            raise ServiceUnavailable() from exception
-        finally:
-            session.close()
-
-    @staticmethod
-    def _write_transaction_function(transaction, query, **kwargs):
-        result = transaction.run(query, **kwargs)
-        return result.consume()
-
-    @staticmethod
-    def _read_transaction_function(transaction, query, **kwargs):
-        results = transaction.run(query, **kwargs)
-        data = DataFrame(results.values(), columns=results.keys())
-        return data
-
-    def _execute_write(self, session, query,
-                       rows: Optional[Dict[str, Any]] = None,
-                      **kwargs
-                      ):
-        try:
-            if rows:
-                results = session.write_transaction(
-                    self._write_transaction_function, query,
-                    rows = rows, **kwargs).counters.__dict__
-            else:
-                results = session.write_transaction(
-                    self._write_transaction_function, query,
-                    **kwargs).counters.__dict__
-        except ServiceUnavailable() as exception:
-            raise ServiceUnavailable() from exception
-        except ClientError as exception:
-            raise ClientError() from exception
-        finally:
-            session.close()
-        return results
