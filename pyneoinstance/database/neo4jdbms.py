@@ -23,6 +23,7 @@ from neo4j.exceptions import ConfigurationError
 from .context import get_logger
 
 def _get_driver(neo_info : Dict[str, str]):
+    logger = get_logger('pyneoinstance', logging.INFO)
     try:
         if neo_info['encrypted'] != '':
             driver = GraphDatabase.driver(
@@ -34,7 +35,8 @@ def _get_driver(neo_info : Dict[str, str]):
                 neo_info['uri'],
                 auth=(neo_info['user'], neo_info['password']))
     except ServiceUnavailable as exception:
-        raise ServiceUnavailable() from exception
+        raise ServiceUnavailable()
+        sys.exit()
     except AuthError as exception:
         raise  AuthError() from exception
     except ConfigurationError as exception:
@@ -67,14 +69,14 @@ def _execute_write(session, query,
         params = {}
     try:
         if rows:
-            results = session.write_transaction(
+            results = session.execute_write(
                 _write_transaction_function, query,
                 rows = rows, **params).counters.__dict__
         else:
-            results = session.write_transaction(
+            results = session.execute_write(
                 _write_transaction_function, query,
                 **params).counters.__dict__
-    except ServiceUnavailable() as exception:
+    except ServiceUnavailable as exception:
         raise ServiceUnavailable() from exception
     except ClientError as exception:
         raise ClientError() from exception
@@ -92,14 +94,14 @@ def _execute_write_parallel(neo_info, database, query,
         with _get_session(driver, database) as session:
             try:
                 if rows:
-                    results = session.write_transaction(
+                    results = session.execute_write(
                         _write_transaction_function, query,
                         rows = rows, **params).counters.__dict__
                 else:
-                    results = session.write_transaction(
+                    results = session.execute_write(
                         _write_transaction_function, query,
                         **params).counters.__dict__
-            except ServiceUnavailable() as exception:
+            except ServiceUnavailable as exception:
                 raise ServiceUnavailable() from exception
             except ClientError as exception:
                 raise ClientError() from exception
@@ -167,7 +169,7 @@ class Neo4jInstance:
         self.neo_info['password'] = password
         self.neo_info['encrypted'] = kwargs.get('encrypted') or ''
         self.__results = defaultdict(int)
-        self.__logger = get_logger('pyneoingest', logging.INFO)
+        self.__logger = get_logger('pyneoinstance', logging.INFO)
 
 
     def execute_read_query(self, query: str,
@@ -202,7 +204,7 @@ class Neo4jInstance:
         with _get_driver(self.neo_info) as driver:
             with _get_session(driver, database) as session:
                 try:
-                    result = session.read_transaction(
+                    result = session.execute_read(
                         _read_transaction_function,query=query,**kwargs)
                 except ServiceUnavailable as exception:
                     raise ServiceUnavailable() from exception

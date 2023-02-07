@@ -1,7 +1,8 @@
 # PyNeoInstance Package
 
 ## What is it?
-Is a Python package that provides a user friendly interface for submitting Cypher queries to Neo4j 4.x.
+
+Is a Python package that provides a user friendly API for submitting Cypher queries to Neo4j.
 It supports the following features:
 
 - __Read query__: Submit a Cypher query and get the result of it as a Pandas DataFrame.

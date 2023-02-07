@@ -1,7 +1,7 @@
 database: test
 pre_ingest:
-  - CREATE CONSTRAINT nkPerson IF NOT EXISTS ON(n:Person) ASSERT (n.personId) IS NODE KEY;
-  - CREATE CONSTRAINT nkMovie IF NOT EXISTS ON(n:Movie) ASSERT (n.movieId) IS NODE KEY;
+  - CREATE CONSTRAINT nkPerson IF NOT EXISTS FOR(n:Person) REQUIRE (n.personId) IS NODE KEY; 
+  - CREATE CONSTRAINT nkMovie IF NOT EXISTS FOR(n:Movie) REQUIRE (n.movieId) IS NODE KEY;
 
 queries:
   load_person:
