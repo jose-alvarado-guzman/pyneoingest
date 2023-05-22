@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=61.0.0",
+            "wheel"]
+
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pyneoinstance"
+version = "1.1.1"
+description = "Handle Neo4j read and write transactions"
+readme = "README.md"
+authors = [{ name = "Jose A. Alvarado-Guzman",email = "jose.alvarado-guzman@neo4j.com" }]
+license = { file = "LICENSE" }
+classifiers = [
+    "License :: OSI Approved :: GNU General Public License (GPL)",
+    "Programming Language :: Python :: 3",
+    "Development Status :: 4 - Beta",
+]
+keywords = ["neo4j", "graph", "cypher"]
+dependencies = [
+    "neo4j>=5.0.0",
+    "pandas",
+    "PyYAML"
+]
+requires-python = ">=3.8"

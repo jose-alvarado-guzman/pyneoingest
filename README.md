@@ -7,7 +7,9 @@ It supports the following features:
 
 - __Read query__: Submit a Cypher query and get the result of it as a Pandas DataFrame.
 - __Write query__: Sumbmit a Cypher query to update an existing database.
-- __Write query with data__: Update a database based on a Pandas DataFrame and one or more Cypher queries.
+- __Write queries__: Sumbmit a list of Cypher query to update an existing database.
+- __Write query with data__: Update a database based on a Pandas DataFrame and a Cypher queries.
+- __Write queriies with data__: Update a database based on a Pandas DataFrame and a list of Cypher queries.
 
 ## How to install it?
 
@@ -22,7 +24,7 @@ pip install pyneoinstance
 In order to use this package you first need to import the Neo4jInstance class.
 
 ```python
-from pyneoingest import Neo4jInstance
+from pyneoinstance import Neo4jInstance
 ```
 
 Once imported, you need to instantiate this class by providing the following arguments:

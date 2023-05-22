@@ -20,10 +20,8 @@ from neo4j.exceptions import ServiceUnavailable
 from neo4j.exceptions import AuthError
 from neo4j.exceptions import ClientError
 from neo4j.exceptions import ConfigurationError
-from .context import get_logger
 
 def _get_driver(neo_info : Dict[str, str]):
-    logger = get_logger('pyneoinstance', logging.INFO)
     try:
         if neo_info['encrypted'] != '':
             driver = GraphDatabase.driver(
@@ -169,7 +167,6 @@ class Neo4jInstance:
         self.neo_info['password'] = password
         self.neo_info['encrypted'] = kwargs.get('encrypted') or ''
         self.__results = defaultdict(int)
-        self.__logger = get_logger('pyneoinstance', logging.INFO)
 
 
     def execute_read_query(self, query: str,
@@ -249,7 +246,6 @@ class Neo4jInstance:
                     for key, value in result.items():
                         if key != '_contains_updates':
                             results[key] += value
-                self.__logger.info(f'Loading stats: {dict(results)}')
         return dict(results)
 
     def execute_write_query(self, query: str,
@@ -364,7 +360,6 @@ class Neo4jInstance:
                     self.__results[key] += value
         results = dict(self.__results.copy())
         self.__results.clear()
-        self.__logger.info(f'Loading stats: {results}')
         return results
 
     def execute_write_query_with_data(self,
