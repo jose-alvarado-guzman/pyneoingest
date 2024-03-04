@@ -171,7 +171,7 @@ class Neo4jInstance:
 
     def execute_read_query(self, query: str,
                            database: Optional[str] = None,
-                           **kwargs: Optional[Dict[str, Any]]
+                           parameters: Optional[Dict[str, Any]] = None
                           ) -> DataFrame:
         """Execute a read transaction to a specific database.
 
@@ -183,7 +183,7 @@ class Neo4jInstance:
             Name of the Neo4j database of which to execute the
             transaction. If not provided the default database is going to
             be use.
-        kwargs : Dict[str, Any], optional
+        parameters: Dict[str, Any], optional
             Extra arguments containing optional cypher parameters.
 
         Return
@@ -198,11 +198,15 @@ class Neo4jInstance:
         ClientError
             When there is a Cypher syntax error or datatype error.
     """
+        if parameters:
+            params = parameters
+        else:
+            params = {}
         with _get_driver(self.neo_info) as driver:
             with _get_session(driver, database) as session:
                 try:
                     result = session.execute_read(
-                        _read_transaction_function,query=query,**kwargs)
+                        _read_transaction_function,query=query,**params)
                 except ServiceUnavailable as exception:
                     raise ServiceUnavailable() from exception
                 except ClientError as exception:
@@ -211,7 +215,7 @@ class Neo4jInstance:
 
     def execute_write_queries(self, queries: List[str],
                             database: Optional[str] = None,
-                            **kwargs: Optional[Dict[str, Any]]
+                            parameters: Optional[Dict[str, Any]] = None
                            ) -> Dict[str, int]:
         """Execute a write query to a specific database.
 
@@ -222,7 +226,7 @@ class Neo4jInstance:
             database : str, optional
                 Name of the Neo4j database of which to execute the transaction.
                 If not provided the default database is going to be use.
-            kwargs : Dict[str, Any], optional
+            parameters : Dict[str, Any], optional
                 Extra arguments containing optional cypher parameters.
 
             Returns
@@ -238,11 +242,15 @@ class Neo4jInstance:
             ClientError
                 When their is a Cypher syntax error or datatype error.
         """
+        if parameters:
+            params = parameters
+        else:
+            params = {}
         results = defaultdict(int)
         with _get_driver(self.neo_info) as driver:
             with _get_session(driver, database) as session:
                 for query in queries:
-                    result = _execute_write(session, query, **kwargs)
+                    result = _execute_write(session, query, parameters=params)
                     for key, value in result.items():
                         if key != '_contains_updates':
                             results[key] += value
@@ -250,7 +258,7 @@ class Neo4jInstance:
 
     def execute_write_query(self, query: str,
                             database: Optional[str] = None,
-                            **kwargs: Optional[Dict['str',Any]]
+                            parameters: Optional[Dict['str',Any]] = None
                            ) -> Dict[str, Any]:
         """Execute a write query to a specific database.
 
@@ -261,7 +269,7 @@ class Neo4jInstance:
             database : str, optional
                 Name of the Neo4j database of which to execute the transaction.
                 If not provided the default database is going to be use.
-            kwargs : Dict[str, Any], optional
+            parameters : Dict[str, Any], optional
                 Extra arguments containing optional cypher parameters.
 
             Returns
@@ -277,7 +285,7 @@ class Neo4jInstance:
             ClientError
                 When their is a Cypher syntax error or datatype error.
         """
-        result = self.execute_write_queries([query], database, **kwargs)
+        result = self.execute_write_queries([query], database, parameters)
         return  result
 
     def execute_write_queries_with_data(self, queries: List[str], data: DataFrame,

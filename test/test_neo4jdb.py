@@ -93,11 +93,21 @@ class TestNeo4jInstance(unittest.TestCase):
         # Test the execute_read_query_using cypher parameters
         movie = "The Matrix"
         query = "MATCH(m:Movie) WHERE m.title=$movie_name RETURN m.title AS movie"
-        print('Parameters')
+        print('Read Parameters')
         result = self.graph.execute_read_query(query,
                                                self.queries['database'],
-                                               movie_name=movie)
+                                               {'movie_name':movie})
         self.assertEqual(movie,result['movie'][0])
+
+        # Test the execute_write_query_using cypher parameters
+        print('Write Parameters')
+        result = self.graph.execute_write_query(
+            self.queries['queries']['create_actor'],
+            self.queries['database'],
+            parameters={'id':-1,'name':'Darth Vader','year':'1977'})
+        solution = {'nodes_created':1,'labels_added':2,
+                    'properties_set':4}
+        self.assertEqual(solution, result)
 
 if __name__ == '__main__':
     unittest.main()
