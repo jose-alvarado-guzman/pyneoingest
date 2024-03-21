@@ -9,6 +9,8 @@
 import os
 import unittest
 import pandas as pd
+import pandas.testing as pd_testing
+from neo4j.exceptions import ClientError
 from .context import database
 from .context import fileload
 from . import test_dir
@@ -24,6 +26,12 @@ class TestNeo4jInstance(unittest.TestCase):
         test_neo4j_instance()
             Test all the methods in the Neo4jInstance class.
     """
+    def assertDataframeEqual(self, a, b, msg):
+        try:
+            pd_testing.assert_frame_equal(a, b)
+        except AssertionError as e:
+            raise self.failureException(msg) from e
+
     def setUp(self):
         """Set authentication variables and create Neo4j driver connection."""
         try:
@@ -37,10 +45,11 @@ class TestNeo4jInstance(unittest.TestCase):
         self.yaml_file = os.path.join(
             test_dir,'cypher_queries.yaml')
         self.queries = fileload.load_yaml_file(self.yaml_file,required_keys)
+        self.addTypeEqualityFunc(pd.DataFrame, self.assertDataframeEqual)
 
     def tearDown(self):
         """Close the neo4j driver and delete the test data."""
-        queries = ["CALL apoc.schema.assert({},{})","MATCH(n) DELETE n"]
+        queries = ["CALL apoc.schema.assert({},{})","MATCH(n) DETACH DELETE n"]
         self.graph.execute_write_queries(queries, self.queries['database'])
 
     def test_neo4j_instance(self):
@@ -108,6 +117,85 @@ class TestNeo4jInstance(unittest.TestCase):
         solution = {'nodes_created':1,'labels_added':2,
                     'properties_set':4}
         self.assertEqual(solution, result)
+
+        # Test get_node_labels_freq
+        print('Get node labels freq')
+        role_file = os.path.join(test_dir,'roles.csv')
+        role_df = pd.read_csv(role_file)
+        result = self.graph.get_node_label_freq(
+                self.queries['database'])
+        solution = pd.DataFrame([
+            {'nodeLabel':'Person','frequency':18727,'relativeFrequency':.75},
+            {'nodeLabel':'Movie','frequency':6231,'relativeFrequency':.25},
+            {'nodeLabel':'Actor','frequency':1,'relativeFrequency':.00}
+            ])
+        self.assertEqual(result,solution)
+
+        # Test get_node_multilabels_freq
+        print('Get node multilabel freq')
+        result = self.graph.get_node_multilabel_freq(
+            self.queries['database'])
+        solution = pd.DataFrame([
+            {'nodeLabels':['Person','Actor'],'frequency':1}])
+        self.assertEqual(result,solution)
+
+        # Test get_rela_labels_freq
+        print('Get relationship type freq')
+        self.graph.execute_write_query_with_data(
+            self.queries['queries']['load_role'],
+            role_df,
+            self.queries['database'])
+        result = self.graph.get_rela_type_freq(
+            self.queries['database'])
+        solution = pd.DataFrame([
+            {'relationshipType':'ACTED_IN','frequency':56914,'relativeFrequency':1.0}])
+        self.assertEqual(result,solution)
+
+        # Test get_properties
+        print('Get properties')
+        query = """
+            CALL apoc.meta.data() YIELD label,property,type,elementType
+            WHERE type<>'RELATIONSHIP'
+            RETURN elementType,label,property,type
+            ORDER BY elementType,label,property;
+        """
+        solution = self.graph.execute_read_query(query,self.queries['database'])
+        result = self.graph.get_properties(
+            self.queries['database'])
+        self.assertEqual(result,solution)
+
+        # Test constraints
+        print('Get constraints')
+        query = """
+            SHOW CONSTRAINTS
+        """
+        solution = self.graph.execute_read_query(query,self.queries['database'])
+        result = self.graph.get_constraints(
+            self.queries['database'])
+        self.assertEqual(result,solution)
+
+        # Test indexes
+        print('Get indexes')
+        query = """
+            SHOW INDEX
+        """
+        solution = self.graph.execute_read_query(query,self.queries['database'])
+        result = self.graph.get_indexes(
+            self.queries['database'])
+        self.assertEqual(result,solution)
+
+        # Test indexes
+        print('Get rela details')
+        result = self.graph.get_rela_source_target_freq(
+            self.queries['database'])
+        solution = pd.DataFrame([
+            {'sourceLabel':'','relationshipType':'ACTED_IN','targetLabel':'','frequency':56914},
+            {'sourceLabel':'','relationshipType':'ACTED_IN','targetLabel':'Movie','frequency':56914},
+            {'sourceLabel':'Person','relationshipType':'ACTED_IN','targetLabel':'','frequency':56914}
+        ]
+        )
+        solution.index = [2,0,1]
+        self.assertEqual(result,solution)
 
 if __name__ == '__main__':
     unittest.main()

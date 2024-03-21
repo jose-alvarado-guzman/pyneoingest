@@ -28,7 +28,7 @@ queries:
       MATCH(p:Person {personId:row.personId}),(m:Movie {movieId:row.movieId})
       MERGE(p)-[r:ACTED_IN]->(m)
         ON CREATE
-        SET r.character=split(row.character,':')
+        SET r.characters=split(row.characters,':')
   create_actor: |
       MERGE(p:Person:Actor {personId:$id})
         ON CREATE

@@ -13,9 +13,11 @@ from typing import Optional, List, Dict, Any
 from collections import defaultdict
 import multiprocessing as mp
 import logging
+import re
 import numpy as np
 from pandas import DataFrame
 from neo4j import GraphDatabase
+from pyvis.network import Network
 from neo4j.exceptions import ServiceUnavailable
 from neo4j.exceptions import AuthError
 from neo4j.exceptions import ClientError
@@ -421,3 +423,374 @@ class Neo4jInstance:
         result = self.execute_write_queries_with_data(
             [query], data,database, partitions, parallel, workers, params)
         return result
+
+    def get_node_label_freq(self, database: Optional[str] = None) -> DataFrame:
+        """Use to obtain the graph node label frequency.
+
+            Parameters
+            ----------
+            database : str, optional
+                Name of the Neo4j database of which to execute the transaction.
+                If not provided the default database is going to be use.
+
+            Returns
+            -------
+            DataFrame
+                Pandas DataFrame object containing the frequency and relative
+                frequency of node labels.
+
+            Raises
+            ------
+            ClientError
+                When APOC Library is not install correctly in your Neo4j
+                deployment.
+        """
+        error_msg = """
+                APOC Library not detected.
+                Please install it before procceding.
+            """
+        query = """
+            MATCH(n)
+            WITH count(*) AS nodeCount
+            CALL db.labels() YIELD label
+            CALL apoc.cypher.run('MATCH (:`'+label+'`) RETURN count(*) as freq',{}) YIELD value
+            WITH nodeCount,label,value.freq AS freq
+            WITH *, 10^3 AS scaleFactor, toFloat(freq)/toFloat(nodeCount) AS relFreq
+            RETURN label AS nodeLabel,
+                freq AS frequency,
+                round(relFreq*scaleFactor)/scaleFactor AS relativeFrequency
+            ORDER BY freq DESC
+        """
+        with _get_driver(self.neo_info) as driver:
+            with _get_session(driver, database) as session:
+                try:
+                    result = session.execute_read(
+                        _read_transaction_function,query=query)
+                except ServiceUnavailable as exception:
+                    raise ServiceUnavailable() from exception
+                except ClientError:
+                    raise ClientError(error_msg)
+        return result
+
+    def get_node_multilabel_freq(self, database: Optional[str] = None) -> DataFrame:
+        """Use to obtain the graph node multi-label frequency.
+
+            Parameters
+            ----------
+            database : str, optional
+                Name of the Neo4j database of which to execute the transaction.
+                If not provided the default database is going to be use.
+
+            Returns
+            -------
+            DataFrame
+                Pandas DataFrame object containing the frequency and relative
+                frequency of node with multiple labels.
+
+            Raises
+            ------
+            ClientError
+                When APOC Library is not install correctly in your Neo4j
+                deployment.
+        """
+        error_msg = """
+                APOC Library not detected.
+                Please install it before procceding.
+            """
+        query = """
+            MATCH (n)
+            WITH labels(n) as nodeLabels
+            WHERE size(nodeLabels)>1
+            RETURN nodeLabels, count(*) as frequency
+        """
+        with _get_driver(self.neo_info) as driver:
+            with _get_session(driver, database) as session:
+                try:
+                    result = session.execute_read(
+                        _read_transaction_function,query=query)
+                except ServiceUnavailable as exception:
+                    raise ServiceUnavailable() from exception
+                except ClientError:
+                    raise ClientError(error_msg)
+        return result
+
+    def get_rela_type_freq(self, database: Optional[str] = None) -> DataFrame:
+        """Use to obtain the graph relationship type frequency.
+
+            Parameters
+            ----------
+            database : str, optional
+                Name of the Neo4j database of which to execute the transaction.
+                If not provided the default database is going to be use.
+
+            Returns
+            -------
+            DataFrame
+                Pandas DataFrame object containing the frequency and relative
+                frequency of relationship types.
+
+            Raises
+            ------
+            ClientError
+                When APOC Library is not install correctly in your Neo4j
+                deployment.
+        """
+        error_msg = """
+                APOC Library not detected.
+                Please install it before procceding.
+            """
+        query = """
+            MATCH()-[]->()
+            WITH count(*) AS relCount
+            CALL db.relationshipTypes() YIELD relationshipType as type
+            CALL apoc.cypher.run('MATCH ()-[:`'+type+'`]->() RETURN count(*) as freq',{})
+            YIELD value
+            WITH type AS relationshipType, value.freq AS freq,relCount
+            WITH *,3 AS presicion
+            WITH *, 10^presicion AS factor,toFloat(freq)/toFloat(relCount) as relFreq
+            RETURN relationshipType, freq AS frequency,
+            round(relFreq*factor)/factor AS relativeFrequency
+            ORDER BY freq DESC;
+        """
+        with _get_driver(self.neo_info) as driver:
+            with _get_session(driver, database) as session:
+                try:
+                    result = session.execute_read(
+                        _read_transaction_function,query=query)
+                except ServiceUnavailable as exception:
+                    raise ServiceUnavailable() from exception
+                except ClientError:
+                    raise ClientError(error_msg)
+        return result
+
+    def get_properties(self, database: Optional[str] = None) -> DataFrame:
+        """Use to obtain the node and relationship properties.
+
+            Parameters
+            ----------
+            database : str, optional
+                Name of the Neo4j database of which to execute the transaction.
+                If not provided the default database is going to be use.
+
+            Returns
+            -------
+            DataFrame
+                Pandas DataFrame object containing information about all nodes
+                and relationships properties.
+
+            Raises
+            ------
+            ClientError
+                When APOC Library is not install correctly in your Neo4j
+                deployment.
+        """
+        error_msg = """
+                APOC Library not detected.
+                Please install it before procceding.
+            """
+        query = """
+            CALL apoc.meta.data() YIELD label,property,type,elementType
+            WHERE type<>'RELATIONSHIP'
+            RETURN elementType,label,property,type
+            ORDER BY elementType,label,property;
+        """
+        with _get_driver(self.neo_info) as driver:
+            with _get_session(driver, database) as session:
+                try:
+                    result = session.execute_read(
+                        _read_transaction_function,query=query)
+                except ServiceUnavailable as exception:
+                    raise ServiceUnavailable() from exception
+                except ClientError:
+                    raise ClientError(error_msg)
+        return result
+
+    def get_constraints(self, database: Optional[str] = None) -> DataFrame:
+        """Use to obtain the constraints in the graph.
+
+            Parameters
+            ----------
+            database : str, optional
+                Name of the Neo4j database of which to execute the transaction.
+                If not provided the default database is going to be use.
+
+            Returns
+            -------
+            DataFrame
+                Pandas DataFrame object containing information about all the
+                constraints.
+
+            Raises
+            ------
+            ClientError
+                When APOC Library is not install correctly in your Neo4j
+                deployment.
+        """
+        error_msg = """
+                APOC Library not detected.
+                Please install it before procceding.
+            """
+        query = """
+            SHOW CONSTRAINTS
+        """
+        with _get_driver(self.neo_info) as driver:
+            with _get_session(driver, database) as session:
+                try:
+                    result = session.execute_read(
+                        _read_transaction_function,query=query)
+                except ServiceUnavailable as exception:
+                    raise ServiceUnavailable() from exception
+                except ClientError:
+                    raise ClientError(error_msg)
+        return result
+
+    def get_indexes(self, database: Optional[str] = None) -> DataFrame:
+        """Use to obtain the indexes in the graph.
+
+            Parameters
+            ----------
+            database : str, optional
+                Name of the Neo4j database of which to execute the transaction.
+                If not provided the default database is going to be use.
+
+            Returns
+            -------
+            DataFrame
+                Pandas DataFrame object containing information about all the
+                indexes.
+
+            Raises
+            ------
+            ClientError
+                When APOC Library is not install correctly in your Neo4j
+                deployment.
+        """
+        error_msg = """
+                APOC Library not detected.
+                Please install it before procceding.
+            """
+        query = """
+            SHOW INDEX
+        """
+        with _get_driver(self.neo_info) as driver:
+            with _get_session(driver, database) as session:
+                try:
+                    result = session.execute_read(
+                        _read_transaction_function,query=query)
+                except ServiceUnavailable as exception:
+                    raise ServiceUnavailable() from exception
+                except ClientError:
+                    raise ClientError(error_msg)
+        return result
+
+    def get_rela_source_target_freq(self, database: Optional[str] = None) -> DataFrame:
+        """Use to obtain the relationships source and target frequency.
+
+            Parameters
+            ----------
+            database : str, optional
+                Name of the Neo4j database of which to execute the transaction.
+                If not provided the default database is going to be use.
+
+            Returns
+            -------
+            DataFrame
+                Pandas DataFrame object containing the frequency of
+                relationships cource and target frequency.
+
+            Raises
+            ------
+            ClientError
+                When APOC Library is not install correctly in your Neo4j
+                deployment.
+        """
+        error_msg = """
+                APOC Library not detected.
+                Please install it before procceding.
+            """
+        query = """
+            CALL apoc.meta.stats() YIELD relTypes
+        """
+        with _get_driver(self.neo_info) as driver:
+            with _get_session(driver, database) as session:
+                try:
+                    result = session.execute_read(
+                        _read_transaction_function,query=query)
+                except ServiceUnavailable as exception:
+                    raise ServiceUnavailable() from exception
+                except ClientError:
+                    raise ClientError(error_msg)
+        stat_dict = result.iloc[0,0]
+        stats_dicts = []
+        for key,value in stat_dict.items():
+            nodes = re.findall(r"\(:?(\w*)\)",key)
+            relationship = re.findall(r"\[:?(\w*)\]",key)[0]
+            info = {'sourceLabel':nodes[0],'relationshipType':relationship,'targetLabel':nodes[1],
+                    'frequency':value}
+            stats_dicts.append(info)
+        stats_df = DataFrame(stats_dicts)
+        stats_df.sort_values(by=['relationshipType','sourceLabel','targetLabel'],inplace=True)
+        return stats_df
+
+    def get_schema_visualization(self, database: Optional[str] = None) -> Network:
+        """Use to visualize the graph data model (schema).
+
+            Parameters
+            ----------
+            database : str, optional
+                Name of the Neo4j database of which to execute the transaction.
+                If not provided the default database is going to be use.
+
+            Returns
+            -------
+            Network
+                Pyvis Network object containing the visualization information.
+
+            Raises
+            ------
+            ClientError
+                When APOC Library is not install correctly in your Neo4j
+                deployment.
+        """
+        error_msg = """
+                APOC Library not detected.
+                Please install it before procceding.
+            """
+        query = """
+            CALL apoc.meta.schema() YIELD value
+        """
+        with _get_driver(self.neo_info) as driver:
+            with _get_session(driver, database) as session:
+                try:
+                    result = session.execute_read(
+                        _read_transaction_function,query=query)
+                except ServiceUnavailable as exception:
+                    raise ServiceUnavailable() from exception
+                except ClientError:
+                    raise ClientError(error_msg)
+        schema = result.iloc[0,0]
+        print(schema)
+        nodes = {}
+        for key in schema.keys():
+            if schema[key]['type']=='node':
+                nodes[key] = {'properties':schema[key]['properties'],'count':schema[key]['count'],
+                              'relationships':schema[key]['relationships']}
+        network = Network(notebook=True,cdn_resources = "remote",directed=True,
+                          filter_menu=True,height="800px", width="100%")
+        network.add_nodes(nodes.keys())
+        relationships = set()
+        for node in nodes:
+            for rela in schema[node]['relationships'].keys():
+                for node2 in schema[node]['relationships'][rela]['labels']:
+                    if schema[node]['relationships'][rela]['direction']=='out':
+                        source_target = node + '|' + rela + '|' + node2
+                    else:
+                        source_target = node2 + '|' + rela + '|' + node
+                    relationships.add(source_target)
+        for relationship in relationships:
+            source_target = str.split(relationship,'|')
+            source = source_target[0]
+            rela_type = source_target[1]
+            target = source_target[2]
+            network.add_edge(source,target,title=rela_type)
+        return network
