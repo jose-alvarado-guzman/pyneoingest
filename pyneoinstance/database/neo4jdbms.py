@@ -757,7 +757,10 @@ class Neo4jInstance:
                 Please install it before procceding.
             """
         query = """
-            CALL apoc.meta.schema() YIELD value
+            CALL apoc.meta.graph() YIELD nodes,relationships
+            WITH [n in nodes | {nodeLabel:apoc.convert.toMap(n)['name'],id:id(n)}] AS nodes,
+            [r in relationships | {relType:type(r),startNode:id(startNode(r)),endNode:id(endNode(r))}] AS relationships
+            RETURN nodes,relationships
         """
         with _get_driver(self.neo_info) as driver:
             with _get_session(driver, database) as session:
@@ -768,29 +771,29 @@ class Neo4jInstance:
                     raise ServiceUnavailable() from exception
                 except ClientError:
                     raise ClientError(error_msg)
-        schema = result.iloc[0,0]
-        print(schema)
-        nodes = {}
-        for key in schema.keys():
-            if schema[key]['type']=='node':
-                nodes[key] = {'properties':schema[key]['properties'],'count':schema[key]['count'],
-                              'relationships':schema[key]['relationships']}
+        nodes = result.iloc[0,0]
+        nodes_dict = {}
+        relationships = result.iloc[0,1]
         network = Network(notebook=True,cdn_resources = "remote",directed=True,
                           filter_menu=True,height="800px", width="100%")
-        network.add_nodes(nodes.keys())
-        relationships = set()
+        options = """
+        const options = {
+            "physics": {
+                "barnesHut": {
+                  "gravitationalConstant": -13950,
+                  "centralGravity": 6.15,
+                  "springLength": 160,
+                  "damping": 0.23
+                },
+                "minVelocity": 0.75
+              }
+            }
+        """
+        network.set_options(options)
         for node in nodes:
-            for rela in schema[node]['relationships'].keys():
-                for node2 in schema[node]['relationships'][rela]['labels']:
-                    if schema[node]['relationships'][rela]['direction']=='out':
-                        source_target = node + '|' + rela + '|' + node2
-                    else:
-                        source_target = node2 + '|' + rela + '|' + node
-                    relationships.add(source_target)
+            network.add_node(node['nodeLabel'])
+            nodes_dict[node['id']] = node['nodeLabel']
         for relationship in relationships:
-            source_target = str.split(relationship,'|')
-            source = source_target[0]
-            rela_type = source_target[1]
-            target = source_target[2]
-            network.add_edge(source,target,title=rela_type)
+            network.add_edge(nodes_dict[relationship['startNode']],
+                             nodes_dict[relationship['endNode']],title=relationship['relType'])
         return network
