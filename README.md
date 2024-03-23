@@ -2,14 +2,24 @@
 
 ## What is it?
 
-PyNeoInstance is a Python package that provides a user friendly API for submitting Cypher queries to Neo4j.
+PyNeoInstance is a Python package that provides a user friendly API for submitting Cypher queries to Neo4j and performing Exploratory Data Analysis (EDA) of your graph.
+
 It supports the following features:
 
-- __Read query__: Submit a Cypher read query, with or without parameters, and get a Pandas Data Frame with the results.
-- __Write query__: Submit a write Cypher query, with or without parameters, to update an existing database.
-- __Write queries__: Submit a list of Cypher queries to update an existing database.
-- __Write query with data__: Update a database based on a Pandas Data Frame and a Cypher query.
-- __Write queries with data__: Update a database based on a Pandas Data Frame and a list of Cypher queries.
+- __<u>Read query</u>__: Submit a Cypher read query, with or without parameters, and get a Pandas Data Frame with the results.
+- __<u>Write query</u>__: Submit a write Cypher query, with or without parameters, to update an existing database.
+- __<u>Write queries</u>__: Submit a list of Cypher queries to update an existing database.
+- __<u>Write query with data</u>__: Update a database based on a Pandas Data Frame and a Cypher query.
+- __<u>Write queries with data</u>__: Update a database based on a Pandas Data Frame and a list of Cypher queries.
+- __<u>Node label frequency</u>__: Get the distribution of the graph node labels.
+- __<u>Multi label node frequency</u>__: Get the distribution of the graph multi label nodes.
+- __<u>Relationship type frequency</u>__: Get the distribution of the graph relationship types.
+- __<u>Relationship type source-target frequency</u>__: Get the distribution of relationship source and target.
+- __<u>Node and relationship properties</u>__: Get information of all properties in the graph.
+- __<u>Constraints</u>__: Get information of all constraints in the graph.
+- __<u>Indexes</u>__: Get information of all indexes in the graph.
+- __<u>Schema Visualization</u>__: Visualize the graph schema.
+
 
 ## How to install it?
 
@@ -230,6 +240,66 @@ person_load_result = graph.execute_write_query_with_data(
     workers = 5
     )
 ```
+## Graph EDA
+
+### Node Label Frequency
+The get_node_label_freq method provides the frequency and relative frequency of all nodes in the graph. This method consider all node labels as single labels, if you want the distribution considering multiple labels use the get_node_multilabel_freq method.
+```python
+graph.get_node_label_freq(database='mydbname')
+```
+<img src="images/nodefreq.png" width="250">
+
+### Relationship Type Frequency
+The get_rela_type_freq method provides the frequency and relative frequency of all relationship types in the graph.
+```python
+graph.get_rela_type_freq(database='mydbname')
+```
+<img src="images/relaFreq.png" width="300">
+
+### Relationship Source-Target Frequency
+The get_rela_source_target_freq method provides the frequency and relative frequency of all relationship types considering the node label of the source and targets of the relationships.
+```python
+graph.get_rela_type_freq(database='mydbname')
+```
+<img src="images/relaSourceTargetFreq.png" width="300">
+
+### Properties
+The get_properties method provides information about all the nodes and relationships properties.
+```python
+graph.graph.get_properties(database='mydbname')
+```
+<img src="images/properties.png" width="350" hight="300">
+
+### Constraints
+The get_constraints method provides information about all the graph constraints.
+```python
+graph.get_constraints(database='mydbname')
+```
+<img src="images/constraints.png" width="350" hight="300">
+
+### Indexes
+The get_indexes method provides information about all the graph indexes.
+```python
+graph.get_indexes(database='mydbname')
+```
+<img src="images/indexes.png" width="450" hight="400">
+
+### Schema Visualization
+The graph.get_schema_visualization provides an interactive UI with the visualization of the graph schema with the ability to filter the schema. This UI can be access via a Notebook or HTML page. This visualization display the node labels as string close to nodes, relationship types are only display on mouse hover.
+
+```python
+schema = graph.get_schema_visualization(database='mydbname')
+schema.show('schema.html')
+```
+<img src="images/schema.png" width="450" hight="400">
+
+To access the UI via HTTML page just set the parameter notebook to false in the show method.
+
+```python
+schema = graph.get_schema_visualization(database='mydbname')
+schema.show('schema.html',notebook=False)
+```
+<img src="images/schemaHtml.png" width="450" hight="400">
 
 ## More detailed examples
 

@@ -170,7 +170,6 @@ class Neo4jInstance:
         self.neo_info['encrypted'] = kwargs.get('encrypted') or ''
         self.__results = defaultdict(int)
 
-
     def execute_read_query(self, query: str,
                            database: Optional[str] = None,
                            parameters: Optional[Dict[str, Any]] = None
@@ -757,10 +756,7 @@ class Neo4jInstance:
                 Please install it before procceding.
             """
         query = """
-            CALL apoc.meta.graph() YIELD nodes,relationships
-            WITH [n in nodes | {nodeLabel:apoc.convert.toMap(n)['name'],id:id(n)}] AS nodes,
-            [r in relationships | {relType:type(r),startNode:id(startNode(r)),endNode:id(endNode(r))}] AS relationships
-            RETURN nodes,relationships
+            CALL apoc.meta.schema() YIELD value
         """
         with _get_driver(self.neo_info) as driver:
             with _get_session(driver, database) as session:
@@ -771,9 +767,7 @@ class Neo4jInstance:
                     raise ServiceUnavailable() from exception
                 except ClientError:
                     raise ClientError(error_msg)
-        nodes = result.iloc[0,0]
-        nodes_dict = {}
-        relationships = result.iloc[0,1]
+        schema = result.iloc[0,0]
         network = Network(notebook=True,cdn_resources = "remote",directed=True,
                           filter_menu=True,height="800px", width="100%")
         options = """
@@ -790,10 +784,25 @@ class Neo4jInstance:
             }
         """
         network.set_options(options)
+        nodes = []
+        relationships = set()
+        for key in schema.keys():
+            if schema[key]['type']=='node':
+                nodes.append(key)
+        network.add_nodes(nodes)
         for node in nodes:
-            network.add_node(node['nodeLabel'])
-            nodes_dict[node['id']] = node['nodeLabel']
+            for rel in schema[node]['relationships'].keys():
+                title = rel
+                if schema[node]['relationships'][rel]['direction']=='in':
+                    target = node
+                    for label in schema[node]['relationships'][rel]['labels']:
+                        source = label
+                else:
+                    source = node
+                    for label in schema[node]['relationships'][rel]['labels']:
+                        target = label
+                relationships.add(source + "|" + title + "|" + target)
         for relationship in relationships:
-            network.add_edge(nodes_dict[relationship['startNode']],
-                             nodes_dict[relationship['endNode']],title=relationship['relType'])
+            rela_parts = relationship.split("|")
+            network.add_edge(rela_parts[0],rela_parts[2],title=rela_parts[1])
         return network
