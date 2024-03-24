@@ -247,7 +247,7 @@ The get_node_label_freq method provides the frequency and relative frequency of 
 ```python
 graph.get_node_label_freq(database='mydbname')
 ```
-<img src="images/nodefreq.png" width="250">
+<img src="https://s3.amazonaws.com/neo4j-ps-ds-bootcamp/img/nodefreq.png" width="250">
 
 ### Relationship Type Frequency
 The get_rela_type_freq method provides the frequency and relative frequency of all relationship types in the graph.
@@ -261,45 +261,45 @@ The get_rela_source_target_freq method provides the frequency and relative frequ
 ```python
 graph.get_rela_type_freq(database='mydbname')
 ```
-<img src="images/relaSourceTargetFreq.png" width="300">
+<img src="https://s3.amazonaws.com/neo4j-ps-ds-bootcamp/img/relaSourceTargetFreq.png" width="300">
 
 ### Properties
 The get_properties method provides information about all the nodes and relationships properties.
 ```python
 graph.graph.get_properties(database='mydbname')
 ```
-<img src="images/properties.png" width="350" hight="300">
+<img src="https://s3.amazonaws.com/neo4j-ps-ds-bootcamp/img/properties.png" width="350" hight="300">
 
 ### Constraints
 The get_constraints method provides information about all the graph constraints.
 ```python
 graph.get_constraints(database='mydbname')
 ```
-<img src="images/constraints.png" width="350" hight="300">
+<img src="https://s3.amazonaws.com/neo4j-ps-ds-bootcamp/img/constraints.png" width="350" hight="300">
 
 ### Indexes
 The get_indexes method provides information about all the graph indexes.
 ```python
 graph.get_indexes(database='mydbname')
 ```
-<img src="images/indexes.png" width="450" hight="400">
+<img src="https://s3.amazonaws.com/neo4j-ps-ds-bootcamp/img/indexes.png" width="450" hight="400">
 
 ### Schema Visualization
-The graph.get_schema_visualization provides an interactive UI with the visualization of the graph schema with the ability to filter the schema. This UI can be access via a Notebook or HTML page. This visualization display the node labels as string close to nodes, relationship types are only display on mouse hover.
+The graph.get_schema_visualization provides an interactive UI with the visualization of the graph schema with the ability to filter the schema. This UI can be access via a Notebook or HTML page. This visualization displays the node labels as string close to nodes, relationship types are only display on mouse hover.
 
 ```python
 schema = graph.get_schema_visualization(database='mydbname')
 schema.show('schema.html')
 ```
-<img src="images/schema.png" width="450" hight="400">
+<img src="https://s3.amazonaws.com/neo4j-ps-ds-bootcamp/img/schema.png" width="450" hight="400">
 
-To access the UI via HTTML page just set the parameter notebook to false in the show method.
+To access the UI via HTTML page just set the parameter notebook to false in the show method and open the html file in your browser.
 
 ```python
 schema = graph.get_schema_visualization(database='mydbname')
 schema.show('schema.html',notebook=False)
 ```
-<img src="images/schemaHtml.png" width="450" hight="400">
+<img src="https://s3.amazonaws.com/neo4j-ps-ds-bootcamp/img/schemaHtml.png" width="450" hight="400">
 
 ## More detailed examples
 
