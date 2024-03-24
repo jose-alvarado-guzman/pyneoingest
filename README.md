@@ -303,6 +303,6 @@ schema.show('schema.html',notebook=False)
 
 ## More detailed examples
 
-For more detailed examples in loading data and performing graph EDA please read the following articles:
-1. [article](https://medium.com/@a-gilmore/pyneoinstance-a-user-friendly-python-library-for-neo5j-dbefa3118bb2)
-2. 
+For more detailed examples please refer to the following articles:
+* Data ingestion: [PyNeoInstance: A User-Friendly Python Library for Neo4j](https://medium.com/@a-gilmore/pyneoinstance-a-user-friendly-python-library-for-neo4j-dbefa3117bb2).
+* Graph EDA: [Performing graph EDA with the PyNeoInstance Python Package](https://medium.com/@jose.alvarado-guzman/0c0f6f230aa9)
