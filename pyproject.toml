@@ -21,6 +21,6 @@ dependencies = [
     "neo4j>=5.0.0",
     "pandas",
     "PyYAML",
-    "pyvis>=0.3.2"
+    "pyvis"
 ]
 requires-python = ">=3.8"

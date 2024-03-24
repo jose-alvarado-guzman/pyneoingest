@@ -1,3 +1,5 @@
-from setuptools import setup
+import setuptools
 
-setup()
+setuptools.setup(
+    packages=setuptools.find_packages(exclude=("images"))
+)

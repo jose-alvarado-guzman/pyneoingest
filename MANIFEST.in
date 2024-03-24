@@ -1,2 +1,3 @@
 include test/*.yaml
 include test/*.csv
+recursive-exclude images
