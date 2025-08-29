@@ -137,7 +137,7 @@ We can update a Neo4j database with data contained in a Pandas Data Frame using 
 
 - _data_: Pandas Data Frame containing data to process.
 - _database_: Optional, database on which to execute the queries.
-- _partitions_: Optional, number of partitions use to break the Data Frame in smaller chucks.
+- _batchSize_: Optional, number of records per batch use to break the Data Frame in smaller chucks.
 - _parallel_: Whether to execute the query using multiple Python process.
 - _workers_: The number of processes to spawn to execute the queries in parallel.
 - _parameters_: Extra arguments containing optional cypher parameters.
@@ -217,25 +217,25 @@ node_load_queries = config['loading_queries']['nodes']
 person_load_result = graph.execute_write_query_with_data(node_load_queries['Person'], person_data, db_info['database'])
 ```
 
-If the number of rows in your Data Frame is 100K or more it is recommended to break the Data Frame in smaller chunks so that they can be process in different transactions. This will avoid running out of heap error. To do this, just indicate in the _partitions_ argument how many partitions would you like to break this Data Frame into. These partitions will be loaded in different sequential transactions unless you specified loading them in parallel by setting the _parallel_ argument to true. We will discuss this process in the next section.
+If the number of rows in your Data Frame is 100K or more it is recommended to break the Data Frame in smaller chunks so that they can be process in different transactions. This will avoid running out of heap error. To do this, just indicate in the _batchSize_ argument the number of records per data batch to break this Data Frame into smaller data batches. These partitions will be loaded in different sequential transactions unless you specified loading them in parallel by setting the _parallel_ argument to true. We will discuss this process in the next section.
 
 ```python
 person_load_result = graph.execute_write_query_with_data(
     node_load_queries['person'],
     person_data,
     db_info['database'],
-    partitions = 5
+    batchSize = 100000
     )
 ```
 ## Updating a database with data in a Data Frame: Parallel  
 
-To load the data in the Data Frame in parallel, we need to partition the Data Frame by incrementing the _partitions_ argument and set the _parallel_ argument to true. By default, this will use all the available virtual CPUs in the machine. If you need to use less, you can specify how many to use by setting the _workers_ argument.
+To load the data in the Data Frame in parallel, we need to partition the Data Frame by incrementing the _batchSize_ argument and set the _parallel_ argument to true. By default, this will use all the available virtual CPUs in the machine. If you need to use less, you can specify how many to use by setting the _workers_ argument.
 
 ```python
 person_load_result = graph.execute_write_query_with_data(
     node_load_queries['person'],
     person_data,
-    partitions = 5,
+    batchSize = 100000,
     parallel = True,
     workers = 5
     )
@@ -254,7 +254,7 @@ The get_rela_type_freq method provides the frequency and relative frequency of a
 ```python
 graph.get_rela_type_freq(database='mydbname')
 ```
-<img src="images/relaFreq.png" width="300">
+<img src="https://s3.amazonaws.com/neo4j-ps-ds-bootcamp/img/relaFreq.png" width="300">
 
 ### Relationship Source-Target Frequency
 The get_rela_source_target_freq method provides the frequency and relative frequency of all relationship types considering the node label of the source and targets of the relationships.

@@ -4,6 +4,9 @@
 import functools
 import time
 import logging
+import re
+import numpy as np
+from pandas import DataFrame
 from datetime import datetime
 from typing import Tuple, Any, Callable, List
 from urllib.request import urlopen
@@ -94,3 +97,51 @@ def timing(function : Callable) -> Tuple[Any, float]:
         elapsed_time = end - start * 1.0
         return result, elapsed_time
     return wrap
+
+def get_batches(data: DataFrame, batch_size) -> List[List[int]]:
+    """Partition the data indexes in batches of the specified size.
+
+    Parameters
+    ----------
+    data : DataFrame
+        Pandas DataFrame containing the data
+    batch_size : int
+        Number of records per partition
+
+    Returns
+    -------
+    List[List[int, bool]]
+        List containing the list of indexes of the DataFrame per partition.
+    """
+    records = data.shape[0]
+    indexes = data.index
+    partitions = records // batch_size
+    if partitions < 2:
+        batches = [list(indexes)]
+    else:
+        remainder = records % batch_size
+        array = np.array(
+            indexes[:records-remainder]).reshape(partitions,-1)
+        batches = array.tolist()
+        if remainder > 0:
+            batches.append(indexes[-remainder:])
+    return batches
+
+def get_columns_diff(query: str, columns: List[str]) -> List[str]:
+    """Get a list of the columns that a Cypher query is trying to access that are
+    not in the list of columns provided.
+
+    Parameters
+    ----------
+    query : str
+       Cypher query
+    columns : List[str]
+        List containing the column names of a Pandas Data Frame
+    Returns
+    -------
+    List[str]
+       List containing the columns that Cypher is trying to access that are not
+       included in the columns names of the data frame.
+    """
+    cypher_attributes = set([w.split('.')[1] for w in re.findall(r'\brow\.\w+',query)])
+    return [a for a in cypher_attributes if a not in columns]

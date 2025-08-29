@@ -9,6 +9,7 @@
 import os
 import unittest
 import pandas as pd
+import numpy as np
 import pandas.testing as pd_testing
 from neo4j.exceptions import ClientError
 from .context import database
@@ -71,7 +72,7 @@ class TestNeo4jInstance(unittest.TestCase):
         result = self.graph.execute_write_query_with_data(self.queries['queries']['load_person'],
                                                           people_df,
                                                           self.queries['database'],
-                                                          partitions=5,
+                                                          batchSize=1000,
                                                           parallel=True)
         solution = {'nodes_created':people_num,'labels_added':people_num,
                     'properties_set':property_num}
@@ -86,7 +87,7 @@ class TestNeo4jInstance(unittest.TestCase):
         print('Partitions')
         result = self.graph.execute_write_query_with_data(self.queries['queries']['load_movie'],
                                                           movie_df, self.queries['database'],
-                                                          partitions=2
+                                                          batchSize=1000
                                                          )
         solution = {'nodes_created':movie_num,'labels_added':movie_num,
                     'properties_set':property_num}
@@ -121,7 +122,7 @@ class TestNeo4jInstance(unittest.TestCase):
         # Test get_node_labels_freq
         print('Get node labels freq')
         role_file = os.path.join(test_dir,'roles.csv')
-        role_df = pd.read_csv(role_file)
+        role_df = pd.read_csv(role_file).replace(np.NaN,'')
         result = self.graph.get_node_label_freq(
                 self.queries['database'])
         solution = pd.DataFrame([

@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pyneoinstance"
-version = "2.0.0"
+version = "3.0.0"
 description = "Handle Neo4j read and write transactions and provide methos for performing graph EDA"
 readme = "README.md"
 authors = [{ name = "Jose A. Alvarado-Guzman",email = "jose.alvarado-guzman@neo4j.com" }]

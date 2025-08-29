@@ -22,6 +22,7 @@ from neo4j.exceptions import ServiceUnavailable
 from neo4j.exceptions import AuthError
 from neo4j.exceptions import ClientError
 from neo4j.exceptions import ConfigurationError
+from .context import get_logger, get_batches, get_columns_diff
 
 def _get_driver(neo_info : Dict[str, str]):
     try:
@@ -59,54 +60,6 @@ def _read_transaction_function(transaction, query, **kwargs):
     data = DataFrame(results.values(), columns=results.keys())
     return data
 
-def _execute_write(session, query,
-                   rows: Optional[Dict[str, Any]] = None,
-                   parameters: Optional[Dict[str, Any]] = None
-                  ):
-    if parameters:
-        params = parameters
-    else:
-        params = {}
-    try:
-        if rows:
-            results = session.execute_write(
-                _write_transaction_function, query,
-                rows = rows, **params).counters.__dict__
-        else:
-            results = session.execute_write(
-                _write_transaction_function, query,
-                **params).counters.__dict__
-    except ServiceUnavailable as exception:
-        raise ServiceUnavailable() from exception
-    except ClientError as exception:
-        raise ClientError() from exception
-    return results
-
-def _execute_write_parallel(neo_info, database, query,
-                   rows: Optional[Dict[str, Any]] = None,
-                   parameters: Optional[Dict[str, Any]] = None
-                  ):
-    if parameters:
-        params = parameters
-    else:
-        params = {}
-    with _get_driver(neo_info) as driver:
-        with _get_session(driver, database) as session:
-            try:
-                if rows:
-                    results = session.execute_write(
-                        _write_transaction_function, query,
-                        rows = rows, **params).counters.__dict__
-                else:
-                    results = session.execute_write(
-                        _write_transaction_function, query,
-                        **params).counters.__dict__
-            except ServiceUnavailable as exception:
-                raise ServiceUnavailable() from exception
-            except ClientError as exception:
-                raise ClientError() from exception
-    return results
-
 class Neo4jInstance:
     """Class use to handle Neo4j requests.
 
@@ -139,7 +92,7 @@ class Neo4jInstance:
             Execute a list of write queries using data on a DataFrame.
     """
     def __init__(self, uri: str, user: str, password: str,
-                 **kwargs: Optional[Dict[str, Any]]) -> None:
+                 verbose=False, **kwargs: Optional[Dict[str, Any]]) -> None:
         """Class constructor.
 
         Parameters
@@ -169,7 +122,13 @@ class Neo4jInstance:
         self.neo_info['password'] = password
         self.neo_info['encrypted'] = kwargs.get('encrypted') or ''
         self.__results = defaultdict(int)
-
+        logging_type = logging.INFO if verbose else logging.WARNING
+        self.__logger = get_logger('pyneoinstance', logging_type)
+        stream_handler = logging.StreamHandler()
+        formatter = logging.Formatter(
+            '%(levelname)s - %(message)s')
+        stream_handler.setFormatter(formatter)
+        self.__logger.addHandler(stream_handler)
     def execute_read_query(self, query: str,
                            database: Optional[str] = None,
                            parameters: Optional[Dict[str, Any]] = None
@@ -251,7 +210,7 @@ class Neo4jInstance:
         with _get_driver(self.neo_info) as driver:
             with _get_session(driver, database) as session:
                 for query in queries:
-                    result = _execute_write(session, query, parameters=params)
+                    result = self._execute_write(session, query, parameters=params)
                     for key, value in result.items():
                         if key != '_contains_updates':
                             results[key] += value
@@ -289,9 +248,10 @@ class Neo4jInstance:
         result = self.execute_write_queries([query], database, parameters)
         return  result
 
-    def execute_write_queries_with_data(self, queries: List[str], data: DataFrame,
+    def execute_write_queries_with_data(self, queries: List[str],
+                                        data: DataFrame,
                                         database: Optional[str] = None,
-                                        partitions: Optional[int] = 1,
+                                        batchSize: Optional[int] = 100_000,
                                         parallel: Optional[bool] = False,
                                         workers: Optional[int] = None,
                                         parameters: Optional[Dict[str, Any]] = None
@@ -307,8 +267,8 @@ class Neo4jInstance:
             database : str, optional
                 Name of the Neo4j database of which to execute the transactions.
                 If not provided the default database is going to be use.
-            partitions : int, optional
-                The number of partitions in which to split the data frame.
+            batchSize : int, optional
+                The number of records per batch or partitions of the data frame.
             parallel : bool, optional
                 Wheather to execute the load in parallel.
             workers : int, optional
@@ -332,36 +292,50 @@ class Neo4jInstance:
                 When the number of batch sizes to split the DataFrame on
                 is larger than the number of rows in it.
         """
-        if partitions > data.shape[0]:
-            raise ValueError(
-                "The batch size cannot be greater than the number of rows in the data.")
-        data_chunks = np.array_split(data,partitions)
+        row_num = data.shape[0]
+        batchSize = batchSize if batchSize <= row_num else row_num
+        msg = f'Partitioning the data in batches of size {batchSize:,.0f}'
+        self.__logger.info(msg)
+        chunks = get_batches(data, batchSize)
+        data_chunks = [data.iloc[d].to_dict('records') for d in chunks]
+        partitions = len(chunks)
+        parallel = parallel if len(chunks)>1 else False
         if parameters:
             params = parameters
         else:
             params = {}
+
         if parallel:
             if workers and workers > 0 and workers <= mp.cpu_count():
                 workers_num = workers
             else:
                 workers_num = mp.cpu_count()
+            msg = f'Loading {partitions:,.0f} data chunks using {workers_num} thread(s)'
+            self.__logger.info(msg)
             for query in queries:
+                col_diff = get_columns_diff(query,data.columns)
+                if len(col_diff)!=0:
+                    self.__logger.warning(msg)
+                tasks = [(self.neo_info, database,query,
+                          d, params) for d in data_chunks]
                 with mp.Pool(workers_num) as worker_pool:
                     results = worker_pool.starmap(
-                        _execute_write_parallel,
-                        [(self.neo_info, database,query, d.fillna(value='').to_dict('records'),
-                          params) for d in data_chunks]
-                    )
+                        self._execute_write_parallel,tasks)
         else:
+            msg = f'Loading {partitions:,.0f} data chunks sequentially'
+            self.__logger.info(msg)
             results = []
             with _get_driver(self.neo_info) as driver:
                 with _get_session(driver, database) as session:
-                    for rows in data_chunks:
-                        rows_dict = {'rows': rows.fillna(value="").to_dict('records')}
+                    for d in data_chunks:
                         for query in queries:
-                            results.append(_execute_write(session,
+                            col_diff = get_columns_diff(query,data.columns)
+                            msg = f'This columns are not in your data: {col_diff}'
+                            if len(col_diff)!=0:
+                                self.__logger.warning(msg)
+                            results.append(self._execute_write(session,
                                                           query,
-                                                          rows_dict['rows'],
+                                                          d,
                                                           params))
         for result in results:
             for key, value in result.items():
@@ -374,7 +348,7 @@ class Neo4jInstance:
     def execute_write_query_with_data(self,
                                       query: str, data: DataFrame,
                                       database: Optional[str] = None,
-                                      partitions: Optional[int] = 1,
+                                      batchSize: Optional[int] = 100_000,
                                       parallel: Optional[bool] = False,
                                       workers: Optional[int] = None,
                                       parameters: Optional[Dict[str, Any]] = None
@@ -390,8 +364,8 @@ class Neo4jInstance:
             database : str, optional
                 Name of the Neo4j database of which to execute the transaction.
                 If not provided the default database is going to be use.
-            partitions : int, optional
-                The number of partitions in which to split the data frame.
+            batchSize : int, optional
+                The number of records per batch or partitions of the data frame.
             parallel : bool, optional
                 Wheather to execute the load in parallel.
             workers : int, optional
@@ -420,7 +394,7 @@ class Neo4jInstance:
         else:
             params = {}
         result = self.execute_write_queries_with_data(
-            [query], data,database, partitions, parallel, workers, params)
+            [query], data,database, batchSize, parallel, workers, params)
         return result
 
     def get_node_label_freq(self, database: Optional[str] = None) -> DataFrame:
@@ -806,3 +780,51 @@ class Neo4jInstance:
             rela_parts = relationship.split("|")
             network.add_edge(rela_parts[0],rela_parts[2],title=rela_parts[1])
         return network
+
+    def _execute_write_parallel(self, neo_info, database, query,
+                       rows: Optional[Dict[str, Any]] = None,
+                       parameters: Optional[Dict[str, Any]] = None
+                      ):
+        if parameters:
+            params = parameters
+        else:
+            params = {}
+        with _get_driver(neo_info) as driver:
+            with _get_session(driver, database) as session:
+                try:
+                    if rows:
+                        results = session.execute_write(
+                            _write_transaction_function, query,
+                            rows = rows, **params).counters.__dict__
+                    else:
+                        results = session.execute_write(
+                            _write_transaction_function, query,
+                            **params).counters.__dict__
+                except ServiceUnavailable as exception:
+                    raise ServiceUnavailable() from exception
+                except ClientError as exception:
+                    raise ClientError() from exception
+        return results
+
+    def _execute_write(self, session, query,
+                       rows: Optional[Dict[str, Any]] = None,
+                       parameters: Optional[Dict[str, Any]] = None
+                      ):
+        if parameters:
+            params = parameters
+        else:
+            params = {}
+        try:
+            if rows:
+                results = session.execute_write(
+                    _write_transaction_function, query,
+                    rows = rows, **params).counters.__dict__
+            else:
+                results = session.execute_write(
+                    _write_transaction_function, query,
+                    **params).counters.__dict__
+        except ServiceUnavailable as exception:
+            raise ServiceUnavailable() from exception
+        except ClientError as exception:
+            raise ClientError() from exception
+        return results
