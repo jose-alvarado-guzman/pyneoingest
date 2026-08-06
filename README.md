@@ -1,6 +1,9 @@
 # PyNeoInstance Package
 
-<img src="images/PyNeoInstanceLogo.png" alt="PyNeoInstance Logo" width="300">
+<table>
+<tr>
+<td><img src="images/PyNeoInstanceLogo.png" alt="PyNeoInstance Logo" width="300"></td>
+<td valign="top">
 
 ## What is it?
 
@@ -21,6 +24,10 @@ It supports the following features:
 - __<u>Constraints</u>__: Get information of all constraints in the graph.
 - __<u>Indexes</u>__: Get information of all indexes in the graph.
 - __<u>Schema Visualization</u>__: Visualize the graph schema.
+
+</td>
+</tr>
+</table>
 
 
 ## How to install it?
