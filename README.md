@@ -299,6 +299,26 @@ graph.get_indexes(database='mydbname')
 ```
 <img src="https://s3.amazonaws.com/neo4j-ps-ds-bootcamp/img/indexes.png" width="450" hight="400">
 
+### Query Graph Visualization
+The `get_query_visualization` method executes a Cypher query that returns nodes and relationships and renders the result as an interactive graph. Node labels are displayed as captions and all properties appear as tooltips on hover.
+
+```python
+query = """
+    MATCH (p:Person)-[r:ACTED_IN]->(m:Movie)
+    RETURN p, r, m
+    LIMIT 50
+"""
+vg = graph.get_query_visualization(query, database='mydbname')
+
+# In a Jupyter notebook — renders inline:
+vg.render()
+
+# As a standalone HTML file:
+with open('graph.html', 'w') as f:
+    f.write(f'<!DOCTYPE html><html><body>{vg.render().data}</body></html>')
+```
+<img src="images/query_visualization.png" alt="Query Graph Visualization" width="600">
+
 ### Schema Visualization
 The `get_schema_visualization` method provides an interactive visualization of the graph schema with the ability to filter by label. Node labels are displayed as strings next to nodes; relationship types are shown on mouse hover.
 
