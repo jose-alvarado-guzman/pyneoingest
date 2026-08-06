@@ -1,5 +1,7 @@
 # PyNeoInstance Package
 
+<img src="images/PyNeoInstanceLogo.png" alt="PyNeoInstance Logo" width="300">
+
 ## What is it?
 
 PyNeoInstance is a Python package that provides a user friendly API for submitting Cypher queries to Neo4j and performing Exploratory Data Analysis (EDA) of your graph.
