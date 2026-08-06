@@ -3,8 +3,10 @@
 
     Classes
     -------
-    TestNeo4jInstance
-        Test all methos in the Neo4jInstance class.
+    TestWriteMethods
+        Tests write operations against a fresh database per test.
+    TestReadAndEdaMethods
+        Tests read and EDA operations against a shared, fully-loaded database.
 """
 import os
 import unittest
@@ -16,17 +18,30 @@ from .context import database
 from .context import fileload
 from . import test_dir
 
-class TestNeo4jInstance(unittest.TestCase):
-    """Class use for testing the functions in the the helper module.
-        Method
-        ------
-        setUp()
-            Create the required environment for the tests.
-        tearDown()
-            Remove the created test environment.
-        test_neo4j_instance()
-            Test all the methods in the Neo4jInstance class.
-    """
+
+def _get_credentials():
+    try:
+        return (os.environ['NEO4J_URI'],
+                os.environ['NEO4J_USER'],
+                os.environ['NEO4J_PASSWORD'])
+    except KeyError as exception:
+        raise KeyError() from exception
+
+
+def _load_queries():
+    required_keys = ['database', 'pre_ingest', 'queries']
+    yaml_file = os.path.join(test_dir, 'cypher_queries.yaml')
+    return fileload.load_yaml_file(yaml_file, required_keys)
+
+
+def _clean_db(graph, db):
+    graph.execute_write_queries(
+        ["CALL apoc.schema.assert({},{})", "MATCH(n) DETACH DELETE n"], db)
+
+
+class TestWriteMethods(unittest.TestCase):
+    """Test write operations. Each test gets a clean database."""
+
     def assertDataframeEqual(self, a, b, msg):
         try:
             pd_testing.assert_frame_equal(a, b)
@@ -34,167 +49,177 @@ class TestNeo4jInstance(unittest.TestCase):
             raise self.failureException(msg) from e
 
     def setUp(self):
-        """Set authentication variables and create Neo4j driver connection."""
-        try:
-            user = os.environ['NEO4J_USER']
-            password = os.environ['NEO4J_PASSWORD']
-            uri = os.getenv('NEO4J_URI')
-        except KeyError as exception:
-            raise KeyError() from exception
-        required_keys = ['database','pre_ingest','queries']
-        self.graph = database.Neo4jInstance(uri,user,password)
-        self.yaml_file = os.path.join(
-            test_dir,'cypher_queries.yaml')
-        self.queries = fileload.load_yaml_file(self.yaml_file,required_keys)
+        uri, user, password = _get_credentials()
+        self.graph = database.Neo4jInstance(uri, user, password)
+        self.queries = _load_queries()
+        self.db = self.queries['database']
         self.addTypeEqualityFunc(pd.DataFrame, self.assertDataframeEqual)
 
     def tearDown(self):
-        """Close the neo4j driver and delete the test data."""
-        queries = ["CALL apoc.schema.assert({},{})","MATCH(n) DETACH DELETE n"]
-        self.graph.execute_write_queries(queries, self.queries['database'])
+        _clean_db(self.graph, self.db)
+        self.graph.close()
 
-    def test_neo4j_instance(self):
-        """Test all methods of the Neo4jInstance class."""
-        # Testing the execute_write_queries method with the pre_ingest queries
-        print('Constraints')
-        result = self.graph.execute_write_queries(self.queries['pre_ingest'],
-                                        self.queries['database'])
-        solution = {'constraints_added':2}
-        self.assertEqual(solution, result)
+    def test_execute_write_queries(self):
+        """Test constraint creation via execute_write_queries."""
+        result = self.graph.execute_write_queries(
+            self.queries['pre_ingest'], self.db)
+        self.assertEqual({'constraints_added': 2}, result)
 
-        # Testing the execute_write_query_with_data method using the people.csv
-        # dataset, partitions=5 and concurrency=True
-        people_file = os.path.join(test_dir,'people.csv')
-        people_df = pd.read_csv(people_file)
+    def test_execute_write_query_with_data(self):
+        """Test parallel and sequential data loading via execute_write_query_with_data."""
+        people_df = pd.read_csv(os.path.join(test_dir, 'people.csv'))
         people_num = people_df.shape[0]
-        property_num = people_num * people_df.shape[1]
-        print('Parallel')
-        result = self.graph.execute_write_query_with_data(self.queries['queries']['load_person'],
-                                                          people_df,
-                                                          self.queries['database'],
-                                                          batchSize=1000,
-                                                          parallel=True)
-        solution = {'nodes_created':people_num,'labels_added':people_num,
-                    'properties_set':property_num}
-        self.assertEqual(solution, result)
+        result = self.graph.execute_write_query_with_data(
+            self.queries['queries']['load_person'],
+            people_df, self.db, batchSize=1000, parallel=True)
+        self.assertEqual({'nodes_created': people_num,
+                          'labels_added': people_num,
+                          'properties_set': people_num * people_df.shape[1]},
+                         result)
 
-        # Testing the execute_write_query_with_data method using the movies.csv
-        # dataset and partitions=2
-        movie_file = os.path.join(test_dir,'movies.csv')
-        movie_df = pd.read_csv(movie_file)
+        movie_df = pd.read_csv(os.path.join(test_dir, 'movies.csv'))
         movie_num = movie_df.shape[0]
-        property_num = movie_num * movie_df.shape[1] + movie_num
-        print('Partitions')
-        result = self.graph.execute_write_query_with_data(self.queries['queries']['load_movie'],
-                                                          movie_df, self.queries['database'],
-                                                          batchSize=1000
-                                                         )
-        solution = {'nodes_created':movie_num,'labels_added':movie_num,
-                    'properties_set':property_num}
-        self.assertEqual(solution, result)
+        result = self.graph.execute_write_query_with_data(
+            self.queries['queries']['load_movie'],
+            movie_df, self.db, batchSize=1000)
+        self.assertEqual({'nodes_created': movie_num,
+                          'labels_added': movie_num,
+                          'properties_set': movie_num * movie_df.shape[1] + movie_num},
+                         result)
 
-        # Testing the execute_read_query method
-        query = "MATCH(p) RETURN count(*) AS node_num"
-        print('Read')
-        result = self.graph.execute_read_query(query,self.queries['database'])
-        solution = people_num + movie_num
-        self.assertEqual(solution, result['node_num'][0])
-
-        # Test the execute_read_query_using cypher parameters
-        movie = "The Matrix"
-        query = "MATCH(m:Movie) WHERE m.title=$movie_name RETURN m.title AS movie"
-        print('Read Parameters')
-        result = self.graph.execute_read_query(query,
-                                               self.queries['database'],
-                                               {'movie_name':movie})
-        self.assertEqual(movie,result['movie'][0])
-
-        # Test the execute_write_query_using cypher parameters
-        print('Write Parameters')
+    def test_execute_write_query_with_parameters(self):
+        """Test parameterized write via execute_write_query."""
         result = self.graph.execute_write_query(
             self.queries['queries']['create_actor'],
-            self.queries['database'],
-            parameters={'id':-1,'name':'Darth Vader','year':'1977'})
-        solution = {'nodes_created':1,'labels_added':2,
-                    'properties_set':4}
-        self.assertEqual(solution, result)
+            self.db,
+            parameters={'id': -1, 'name': 'Darth Vader', 'year': '1977'})
+        self.assertEqual(
+            {'nodes_created': 1, 'labels_added': 2, 'properties_set': 4}, result)
 
-        # Test get_node_labels_freq
-        print('Get node labels freq')
-        role_file = os.path.join(test_dir,'roles.csv')
-        role_df = pd.read_csv(role_file).replace(np.nan,'')
-        result = self.graph.get_node_label_freq(
-                self.queries['database'])
+
+class TestReadAndEdaMethods(unittest.TestCase):
+    """Test read and EDA methods. Data is loaded once for the entire class."""
+
+    @classmethod
+    def setUpClass(cls):
+        uri, user, password = _get_credentials()
+        cls.graph = database.Neo4jInstance(uri, user, password)
+        cls.queries = _load_queries()
+        cls.db = cls.queries['database']
+
+        cls.graph.execute_write_queries(cls.queries['pre_ingest'], cls.db)
+
+        cls.people_df = pd.read_csv(os.path.join(test_dir, 'people.csv'))
+        cls.people_num = cls.people_df.shape[0]
+        cls.graph.execute_write_query_with_data(
+            cls.queries['queries']['load_person'],
+            cls.people_df, cls.db, batchSize=1000, parallel=True)
+
+        cls.movie_df = pd.read_csv(os.path.join(test_dir, 'movies.csv'))
+        cls.movie_num = cls.movie_df.shape[0]
+        cls.graph.execute_write_query_with_data(
+            cls.queries['queries']['load_movie'],
+            cls.movie_df, cls.db, batchSize=1000)
+
+        cls.graph.execute_write_query(
+            cls.queries['queries']['create_actor'],
+            cls.db,
+            parameters={'id': -1, 'name': 'Darth Vader', 'year': '1977'})
+
+        role_df = pd.read_csv(os.path.join(test_dir, 'roles.csv')).replace(np.nan, '')
+        cls.graph.execute_write_query_with_data(
+            cls.queries['queries']['load_role'], role_df, cls.db)
+
+    @classmethod
+    def tearDownClass(cls):
+        _clean_db(cls.graph, cls.db)
+        cls.graph.close()
+
+    def assertDataframeEqual(self, a, b, msg):
+        try:
+            pd_testing.assert_frame_equal(a, b)
+        except AssertionError as e:
+            raise self.failureException(msg) from e
+
+    def setUp(self):
+        self.addTypeEqualityFunc(pd.DataFrame, self.assertDataframeEqual)
+
+    def test_execute_read_query(self):
+        """Test basic read query returns expected node count."""
+        query = "MATCH(p) RETURN count(*) AS node_num"
+        result = self.graph.execute_read_query(query, self.db)
+        self.assertEqual(self.people_num + self.movie_num + 1, result['node_num'][0])
+
+    def test_execute_read_query_with_parameters(self):
+        """Test read query with Cypher parameters."""
+        movie = "The Matrix"
+        query = "MATCH(m:Movie) WHERE m.title=$movie_name RETURN m.title AS movie"
+        result = self.graph.execute_read_query(
+            query, self.db, {'movie_name': movie})
+        self.assertEqual(movie, result['movie'][0])
+
+    def test_get_node_label_freq(self):
+        """Test node label frequency EDA."""
+        result = self.graph.get_node_label_freq(self.db)
         solution = pd.DataFrame([
-            {'nodeLabel':'Person','frequency':18727,'relativeFrequency':.75},
-            {'nodeLabel':'Movie','frequency':6231,'relativeFrequency':.25},
-            {'nodeLabel':'Actor','frequency':1,'relativeFrequency':.00}
-            ])
-        self.assertEqual(result,solution)
+            {'nodeLabel': 'Person', 'frequency': 18727, 'relativeFrequency': .75},
+            {'nodeLabel': 'Movie', 'frequency': 6231, 'relativeFrequency': .25},
+            {'nodeLabel': 'Actor', 'frequency': 1, 'relativeFrequency': .00}
+        ])
+        self.assertEqual(result, solution)
 
-        # Test get_node_multilabels_freq
-        print('Get node multilabel freq')
-        result = self.graph.get_node_multilabel_freq(
-            self.queries['database'])
+    def test_get_node_multilabel_freq(self):
+        """Test multi-label node frequency EDA."""
+        result = self.graph.get_node_multilabel_freq(self.db)
         solution = pd.DataFrame([
-            {'nodeLabels':['Person','Actor'],'frequency':1}])
-        self.assertEqual(result,solution)
+            {'nodeLabels': ['Person', 'Actor'], 'frequency': 1}])
+        self.assertEqual(result, solution)
 
-        # Test get_rela_labels_freq
-        print('Get relationship type freq')
-        self.graph.execute_write_query_with_data(
-            self.queries['queries']['load_role'],
-            role_df,
-            self.queries['database'])
-        result = self.graph.get_rela_type_freq(
-            self.queries['database'])
+    def test_get_rela_type_freq(self):
+        """Test relationship type frequency EDA."""
+        result = self.graph.get_rela_type_freq(self.db)
         solution = pd.DataFrame([
-            {'relationshipType':'ACTED_IN','frequency':56914,'relativeFrequency':1.0}])
-        self.assertEqual(result,solution)
+            {'relationshipType': 'ACTED_IN', 'frequency': 56914,
+             'relativeFrequency': 1.0}])
+        self.assertEqual(result, solution)
 
-        # Test get_properties
-        print('Get properties')
+    def test_get_properties(self):
+        """Test node and relationship properties EDA."""
         query = """
             CALL apoc.meta.data() YIELD label,property,type,elementType
             WHERE type<>'RELATIONSHIP'
             RETURN elementType,label,property,type
             ORDER BY elementType,label,property;
         """
-        solution = self.graph.execute_read_query(query,self.queries['database'])
-        result = self.graph.get_properties(
-            self.queries['database'])
-        self.assertEqual(result,solution)
+        solution = self.graph.execute_read_query(query, self.db)
+        result = self.graph.get_properties(self.db)
+        self.assertEqual(result, solution)
 
-        # Test constraints
-        print('Get constraints')
-        query = """
-            SHOW CONSTRAINTS
-        """
-        solution = self.graph.execute_read_query(query,self.queries['database'])
-        result = self.graph.get_constraints(
-            self.queries['database'])
-        self.assertEqual(result,solution)
+    def test_get_constraints(self):
+        """Test constraint listing."""
+        solution = self.graph.execute_read_query("SHOW CONSTRAINTS", self.db)
+        result = self.graph.get_constraints(self.db)
+        self.assertEqual(result, solution)
 
-        # Test indexes
-        print('Get indexes')
-        query = """
-            SHOW INDEX
-        """
-        solution = self.graph.execute_read_query(query,self.queries['database'])
-        result = self.graph.get_indexes(
-            self.queries['database'])
-        self.assertEqual(result,solution)
+    def test_get_indexes(self):
+        """Test index listing."""
+        solution = self.graph.execute_read_query("SHOW INDEX", self.db)
+        result = self.graph.get_indexes(self.db)
+        self.assertEqual(result, solution)
 
-        # Test indexes
-        print('Get rela details')
-        result = self.graph.get_rela_source_target_freq(
-            self.queries['database'])
+    def test_get_rela_source_target_freq(self):
+        """Test relationship source/target frequency EDA."""
+        result = self.graph.get_rela_source_target_freq(self.db)
         solution = pd.DataFrame([
-            {'sourceLabel':'','relationshipType':'ACTED_IN','targetLabel':'','frequency':56914},
-            {'sourceLabel':'','relationshipType':'ACTED_IN','targetLabel':'Movie','frequency':56914},
-            {'sourceLabel':'Person','relationshipType':'ACTED_IN','targetLabel':'','frequency':56914}
+            {'sourceLabel': '', 'relationshipType': 'ACTED_IN',
+             'targetLabel': '', 'frequency': 56914},
+            {'sourceLabel': '', 'relationshipType': 'ACTED_IN',
+             'targetLabel': 'Movie', 'frequency': 56914},
+            {'sourceLabel': 'Person', 'relationshipType': 'ACTED_IN',
+             'targetLabel': '', 'frequency': 56914}
         ])
-        self.assertEqual(result,solution)
+        self.assertEqual(result, solution)
+
 
 if __name__ == '__main__':
     unittest.main()

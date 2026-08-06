@@ -74,7 +74,7 @@ def is_reachable_url(url: str) -> bool:
         with urlopen(url):
             code = 200
     except (HTTPError, URLError) as error:
-        code = error.code
+        code = getattr(error, 'code', None)
     return code == 200
 
 def timing(function : Callable) -> Tuple[Any, float]:
@@ -99,7 +99,7 @@ def timing(function : Callable) -> Tuple[Any, float]:
         return result, elapsed_time
     return wrap
 
-def get_batches(data: DataFrame, batch_size) -> List[List[int]]:
+def get_batches(data: DataFrame, batch_size: int) -> List[List[int]]:
     """Partition the data indexes in batches of the specified size.
 
     Parameters

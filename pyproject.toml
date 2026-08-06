@@ -14,7 +14,7 @@ license = { file = "LICENSE" }
 classifiers = [
     "License :: OSI Approved :: GNU General Public License (GPL)",
     "Programming Language :: Python :: 3",
-    "Development Status :: 4 - Beta",
+    "Development Status :: 5 - Production/Stable",
 ]
 keywords = ["neo4j", "graph", "cypher"]
 dependencies = [
@@ -24,3 +24,9 @@ dependencies = [
     "pyvis"
 ]
 requires-python = ">=3.8"
+
+[project.optional-dependencies]
+rust = ["neo4j-rust-ext>=5.0.0"]
+
+[project.urls]
+Repository = "https://github.com/jose-alvarado-guzman/pyneoingest"

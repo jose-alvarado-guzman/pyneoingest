@@ -29,7 +29,7 @@ _REL_TYPE_RE = re.compile(r"\[:?(\w*)\]")
 
 def _get_driver(neo_info : Dict[str, str]):
     try:
-        if neo_info['encrypted'] != '':
+        if neo_info['encrypted']:
             driver = GraphDatabase.driver(
                 neo_info['uri'],
                 auth=(neo_info['user'], neo_info['password']),
@@ -94,7 +94,7 @@ class Neo4jInstance:
             Execute a list of write queries using data on a DataFrame.
     """
     def __init__(self, uri: str, user: str, password: str,
-                 verbose=False, **kwargs: Optional[Dict[str, Any]]) -> None:
+                 verbose: bool = False, **kwargs: Optional[Dict[str, Any]]) -> None:
         """Class constructor.
 
         Parameters
@@ -268,8 +268,8 @@ class Neo4jInstance:
     def execute_write_queries_with_data(self, queries: List[str],
                                         data: DataFrame,
                                         database: Optional[str] = None,
-                                        batchSize: Optional[int] = 100_000,
-                                        parallel: Optional[bool] = False,
+                                        batchSize: int = 100_000,
+                                        parallel: bool = False,
                                         workers: Optional[int] = None,
                                         parameters: Optional[Dict[str, Any]] = None
                                        ) -> Dict[str, int]:
@@ -612,11 +612,13 @@ class Neo4jInstance:
         """
         stat_dict = self._execute_read(query, database, self._apoc_error_msg).iloc[0,0]
         stats_dicts = []
-        for key,value in stat_dict.items():
+        for key, value in stat_dict.items():
             nodes = _NODE_LABEL_RE.findall(key)
-            relationship = _REL_TYPE_RE.findall(key)[0]
-            info = {'sourceLabel':nodes[0],'relationshipType':relationship,'targetLabel':nodes[1],
-                    'frequency':value}
+            rel_matches = _REL_TYPE_RE.findall(key)
+            if len(nodes) < 2 or not rel_matches:
+                continue
+            info = {'sourceLabel': nodes[0], 'relationshipType': rel_matches[0],
+                    'targetLabel': nodes[1], 'frequency': value}
             stats_dicts.append(info)
         stats_df = DataFrame(stats_dicts)
         stats_df.sort_values(by=['relationshipType','sourceLabel','targetLabel'],inplace=True)
@@ -648,8 +650,8 @@ class Neo4jInstance:
             CALL apoc.meta.schema() YIELD value
         """
         schema = self._execute_read(query, database, self._apoc_error_msg).iloc[0,0]
-        network = Network(notebook=True,cdn_resources = "remote",directed=True,
-                          filter_menu=True,height="800px", width="100%")
+        network = Network(cdn_resources="remote", directed=True,
+                          filter_menu=True, height="800px", width="100%")
         options = """
         const options = {
             "physics": {
@@ -704,5 +706,5 @@ class Neo4jInstance:
         except ServiceUnavailable as exception:
             raise ServiceUnavailable() from exception
         except ClientError as exception:
-            raise ClientError() from exception
+            raise ClientError(str(exception)) from exception
         return results

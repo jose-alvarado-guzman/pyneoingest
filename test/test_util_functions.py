@@ -57,9 +57,8 @@ class TestUtilFunctions(unittest.TestCase):
         data = pd.read_csv(os.path.join(test_dir,'age_data.csv'))
         batches = util.get_batches(data, batch_size)
         records = data.shape[0]
-        partitions = records // batch_size
         remainder = records % batch_size
-        solution = partitions+remainder
+        solution = records // batch_size + (1 if remainder else 0)
         result = len(batches)
         self.assertEqual(solution, result)
         result = sum([len(b) for b in batches])
