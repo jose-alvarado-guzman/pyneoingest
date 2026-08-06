@@ -52,6 +52,17 @@ class TestUtilFunctions(unittest.TestCase):
         solution = []
         self.assertEqual(solution,result)
 
+    def test_timing(self):
+        """Test that the timing decorator returns the result and a non-negative elapsed time."""
+        @util.timing
+        def add(a, b):
+            return a + b
+
+        result, elapsed = add(1, 2)
+        self.assertEqual(3, result)
+        self.assertIsInstance(elapsed, float)
+        self.assertGreaterEqual(elapsed, 0)
+
     def test_get_batches(self):
         batch_size = 100_000
         data = pd.read_csv(os.path.join(test_dir,'age_data.csv'))

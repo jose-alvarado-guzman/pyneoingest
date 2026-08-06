@@ -28,5 +28,8 @@ requires-python = ">=3.8"
 [project.optional-dependencies]
 rust = ["neo4j-rust-ext>=5.0.0"]
 
+[tool.setuptools.package-data]
+pyneoinstance = ["py.typed"]
+
 [project.urls]
 Repository = "https://github.com/jose-alvarado-guzman/pyneoingest"

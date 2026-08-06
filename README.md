@@ -23,8 +23,14 @@ It supports the following features:
 
 ## How to install it?
 
-```python
+```bash
 pip install pyneoinstance
+```
+
+For faster data serialization via the Rust-accelerated Neo4j driver (Python 3.10+ only):
+
+```bash
+pip install pyneoinstance[rust]
 ```
 
 ## How to use it?
@@ -108,7 +114,7 @@ query = """
            m.tagline AS tagline;
 """
 
-data = graph.execute_read_query(query, db_info['database'], db_info['database'], parameters={'movie_title':'The Matrix'})
+data = graph.execute_read_query(query, db_info['database'], parameters={'movie_title':'The Matrix'})
 ```
 
 ### Submitting a Cypher write query
@@ -125,9 +131,9 @@ query = """
 
 results = graph.execute_write_query(query, db_info['database'],
   parameters={
-    'movie_title':'Wakanda Forever',
-    'year'=2022,
-    tagline=''Wakanda Forever! Long Live Wakanda! For Honor, For Legacy, For Wakanda!''
+    'movie_title': 'Wakanda Forever',
+    'year': 2022,
+    'tagline': 'Wakanda Forever! Long Live Wakanda! For Honor, For Legacy, For Wakanda!'
   })
 ```
 
@@ -266,7 +272,7 @@ graph.get_rela_type_freq(database='mydbname')
 ### Properties
 The get_properties method provides information about all the nodes and relationships properties.
 ```python
-graph.graph.get_properties(database='mydbname')
+graph.get_properties(database='mydbname')
 ```
 <img src="https://s3.amazonaws.com/neo4j-ps-ds-bootcamp/img/properties.png" width="350" hight="300">
 
@@ -285,20 +291,16 @@ graph.get_indexes(database='mydbname')
 <img src="https://s3.amazonaws.com/neo4j-ps-ds-bootcamp/img/indexes.png" width="450" hight="400">
 
 ### Schema Visualization
-The graph.get_schema_visualization provides an interactive UI with the visualization of the graph schema with the ability to filter the schema. This UI can be access via a Notebook or HTML page. This visualization displays the node labels as string close to nodes, relationship types are only display on mouse hover.
+The `get_schema_visualization` method provides an interactive visualization of the graph schema with the ability to filter by label. Node labels are displayed as strings next to nodes; relationship types are shown on mouse hover.
 
 ```python
 schema = graph.get_schema_visualization(database='mydbname')
-schema.show('schema.html')
+schema.write_html('schema.html')
 ```
+
+Open `schema.html` in your browser to explore the schema interactively.
+
 <img src="https://s3.amazonaws.com/neo4j-ps-ds-bootcamp/img/schema.png" width="450" hight="400">
-
-To access the UI via HTTML page just set the parameter notebook to false in the show method and open the html file in your browser.
-
-```python
-schema = graph.get_schema_visualization(database='mydbname')
-schema.show('schema.html',notebook=False)
-```
 <img src="https://s3.amazonaws.com/neo4j-ps-ds-bootcamp/img/schemaHtml.png" width="450" hight="400">
 
 ## More detailed examples

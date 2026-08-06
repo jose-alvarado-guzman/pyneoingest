@@ -637,7 +637,7 @@ class Neo4jInstance:
             Returns
             -------
             Network
-                Pyvis Network object containing the visualization information.
+                Pyvis Network object. Render with ``network.write_html('schema.html')``.
 
             Raises
             ------
