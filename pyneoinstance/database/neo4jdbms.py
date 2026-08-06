@@ -84,8 +84,8 @@ class Neo4jInstance:
                             kwargs: Optional[Dict[str, Any]]) -> None
             Execute a write query to a specific database.
         get_query_visualization(query: str, database: Optional[str],
-                               parameters: Optional[Dict[str, Any]]) -> Network
-            Execute a read query and return the result as a pyvis graph visualization.
+                               parameters: Optional[Dict[str, Any]]) -> VisualizationGraph
+            Execute a read query and return the result as a neo4j-viz graph visualization.
         execute_write_query_with_data(self, query: str, data: DataFrame,
                                       database: Optional[str] = None,
                                       partitions: Optional[int] = 1,
@@ -206,9 +206,7 @@ class Neo4jInstance:
 
     def get_query_visualization(self, query: str,
                                 database: Optional[str] = None,
-                                parameters: Optional[Dict[str, Any]] = None,
-                                node_caption: Optional[str] = 'labels',
-                                relationship_caption: Optional[str] = 'type'
+                                parameters: Optional[Dict[str, Any]] = None
                                ) -> VisualizationGraph:
         """Execute a read query and return the result as a graph visualization.
 
@@ -221,15 +219,12 @@ class Neo4jInstance:
                 If not provided the default database is used.
             parameters : Dict[str, Any], optional
                 Extra arguments containing optional Cypher parameters.
-            node_caption : str, optional
-                Node property to use as the caption. Defaults to 'labels'.
-            relationship_caption : str, optional
-                Relationship property to use as the caption. Defaults to 'type'.
 
             Returns
             -------
             VisualizationGraph
-                neo4j-viz VisualizationGraph object.
+                neo4j-viz VisualizationGraph object. Node captions are derived
+                from node labels; relationship captions from relationship type.
                 In a Jupyter notebook call ``vg.render()`` to display it inline.
                 To save as a standalone HTML file, wrap the fragment in a full document::
 
@@ -253,9 +248,7 @@ class Neo4jInstance:
                 raise ServiceUnavailable() from exception
             except ClientError as exception:
                 raise ClientError(str(exception)) from exception
-        return from_neo4j(graph,
-                          node_caption=node_caption,
-                          relationship_caption=relationship_caption)
+        return from_neo4j(graph)
 
     def execute_write_queries(self, queries: List[str],
                             database: Optional[str] = None,
