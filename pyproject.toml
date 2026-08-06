@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pyneoinstance"
-version = "4.0.0"
+version = "4.0.1"
 description = "Handle Neo4j read and write transactions and provide methods for performing graph EDA"
 readme = "README.md"
 authors = [{ name = "Jose A. Alvarado-Guzman",email = "jose.alvarado-guzman@neo4j.com" }]
@@ -25,7 +25,7 @@ dependencies = [
     "pandas>=1.3.0",
     "PyYAML>=5.1",
     "pyvis>=0.3.0",
-    "neo4j-viz>=0.5.0"
+    "neo4j-viz>=1.0.0"
 ]
 requires-python = ">=3.10"
 

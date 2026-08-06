@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.0.1] - 2026-08-06
+
+### Fixed
+- `get_query_visualization`: removed `node_caption` and `relationship_caption`
+  parameters, which were dropped in `neo4j-viz` 1.0.0. Captions are now always
+  derived automatically from node labels and relationship types.
+- CI: replaced `IS NODE KEY` constraints (Enterprise Edition only) with
+  `IS UNIQUE` in test fixtures so the test suite runs on Neo4j Community Edition.
+- CI: replaced missing `age_data.csv` reference in `test_get_batches` with the
+  committed `people.csv`.
+
+### Changed
+- `neo4j-viz` dependency tightened from `>=0.5.0` to `>=1.0.0` to match the
+  current stable API.
+
 ## [4.0.0] - 2026-08-06
 
 ### Added
