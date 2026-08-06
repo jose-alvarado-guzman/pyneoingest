@@ -49,5 +49,6 @@ def check_required_keys(required_keys: List[str], keys: List[str]) -> List[str]:
     List[str]
         List of elements in the required_keys that are not included in keys.
     """
-    missing_keys = [key for key in required_keys if key not in keys]
+    keys_set = set(keys)
+    missing_keys = [key for key in required_keys if key not in keys_set]
     return missing_keys

@@ -11,7 +11,7 @@ This module is responsible for the folling task:
 
 from typing import Optional, List, Dict, Any
 from collections import defaultdict
-import multiprocessing as mp
+from concurrent.futures import ThreadPoolExecutor
 import logging
 import re
 import numpy as np
@@ -23,6 +23,9 @@ from neo4j.exceptions import AuthError
 from neo4j.exceptions import ClientError
 from neo4j.exceptions import ConfigurationError
 from .context import get_logger, get_batches, get_columns_diff
+
+_NODE_LABEL_RE = re.compile(r"\(:?(\w*)\)")
+_REL_TYPE_RE = re.compile(r"\[:?(\w*)\]")
 
 def _get_driver(neo_info : Dict[str, str]):
     try:
@@ -121,7 +124,6 @@ class Neo4jInstance:
         self.neo_info['user'] = user
         self.neo_info['password'] = password
         self.neo_info['encrypted'] = kwargs.get('encrypted') or ''
-        self.__results = defaultdict(int)
         logging_type = logging.INFO if verbose else logging.WARNING
         self.__logger = get_logger('pyneoinstance', logging_type)
         stream_handler = logging.StreamHandler()
@@ -129,6 +131,31 @@ class Neo4jInstance:
             '%(levelname)s - %(message)s')
         stream_handler.setFormatter(formatter)
         self.__logger.addHandler(stream_handler)
+        self._driver = _get_driver(self.neo_info)
+
+    def close(self):
+        self._driver.close()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()
+
+    _apoc_error_msg = "APOC Library not detected. Please install it before proceeding."
+
+    def _execute_read(self, query: str,
+                      database: Optional[str] = None,
+                      error_msg: Optional[str] = None) -> DataFrame:
+        with _get_session(self._driver, database) as session:
+            try:
+                return session.execute_read(
+                    _read_transaction_function, query=query)
+            except ServiceUnavailable as exception:
+                raise ServiceUnavailable() from exception
+            except ClientError:
+                raise ClientError(error_msg)
+
     def execute_read_query(self, query: str,
                            database: Optional[str] = None,
                            parameters: Optional[Dict[str, Any]] = None
@@ -162,15 +189,14 @@ class Neo4jInstance:
             params = parameters
         else:
             params = {}
-        with _get_driver(self.neo_info) as driver:
-            with _get_session(driver, database) as session:
-                try:
-                    result = session.execute_read(
-                        _read_transaction_function,query=query,**params)
-                except ServiceUnavailable as exception:
-                    raise ServiceUnavailable() from exception
-                except ClientError as exception:
-                    raise ClientError() from exception
+        with _get_session(self._driver, database) as session:
+            try:
+                result = session.execute_read(
+                    _read_transaction_function,query=query,**params)
+            except ServiceUnavailable as exception:
+                raise ServiceUnavailable() from exception
+            except ClientError as exception:
+                raise ClientError() from exception
         return result
 
     def execute_write_queries(self, queries: List[str],
@@ -207,13 +233,12 @@ class Neo4jInstance:
         else:
             params = {}
         results = defaultdict(int)
-        with _get_driver(self.neo_info) as driver:
-            with _get_session(driver, database) as session:
-                for query in queries:
-                    result = self._execute_write(session, query, parameters=params)
-                    for key, value in result.items():
-                        if key != '_contains_updates':
-                            results[key] += value
+        with _get_session(self._driver, database) as session:
+            for query in queries:
+                result = self._execute_write(session, query, parameters=params)
+                for key, value in result.items():
+                    if key != '_contains_updates':
+                        results[key] += value
         return dict(results)
 
     def execute_write_query(self, query: str,
@@ -306,28 +331,29 @@ class Neo4jInstance:
             params = {}
 
         if parallel:
-            if workers and workers > 0 and workers <= mp.cpu_count():
-                workers_num = workers
-            else:
-                workers_num = mp.cpu_count()
+            import os
+            workers_num = workers if (workers and workers > 0) else os.cpu_count()
             msg = f'Loading {partitions:,.0f} data chunks using {workers_num} thread(s)'
             self.__logger.info(msg)
+            results = []
             for query in queries:
-                col_diff = get_columns_diff(query,data.columns)
-                if len(col_diff)!=0:
-                    self.__logger.warning(msg)
-                tasks = [(self.neo_info, database,query,
-                          d, params) for d in data_chunks]
-                with mp.Pool(workers_num) as worker_pool:
-                    results = worker_pool.starmap(
-                        self._execute_write_parallel,tasks)
+                col_diff = get_columns_diff(query, data.columns)
+                if len(col_diff) != 0:
+                    self.__logger.warning(
+                        f'These columns are not in your data: {col_diff}')
+
+                def run_chunk(chunk, q=query):
+                    with _get_session(self._driver, database) as session:
+                        return self._execute_write(session, q, chunk, params)
+
+                with ThreadPoolExecutor(max_workers=workers_num) as executor:
+                    results.extend(executor.map(run_chunk, data_chunks))
         else:
             msg = f'Loading {partitions:,.0f} data chunks sequentially'
             self.__logger.info(msg)
             results = []
-            with _get_driver(self.neo_info) as driver:
-                with _get_session(driver, database) as session:
-                    for d in data_chunks:
+            with _get_session(self._driver, database) as session:
+                for d in data_chunks:
                         for query in queries:
                             col_diff = get_columns_diff(query,data.columns)
                             msg = f'This columns are not in your data: {col_diff}'
@@ -337,13 +363,12 @@ class Neo4jInstance:
                                                           query,
                                                           d,
                                                           params))
+        results_agg = defaultdict(int)
         for result in results:
             for key, value in result.items():
                 if key != '_contains_updates':
-                    self.__results[key] += value
-        results = dict(self.__results.copy())
-        self.__results.clear()
-        return results
+                    results_agg[key] += value
+        return dict(results_agg)
 
     def execute_write_query_with_data(self,
                                       query: str, data: DataFrame,
@@ -418,10 +443,7 @@ class Neo4jInstance:
                 When APOC Library is not install correctly in your Neo4j
                 deployment.
         """
-        error_msg = """
-                APOC Library not detected.
-                Please install it before procceding.
-            """
+
         query = """
             MATCH(n)
             WITH count(*) AS nodeCount
@@ -434,16 +456,7 @@ class Neo4jInstance:
                 round(relFreq*scaleFactor)/scaleFactor AS relativeFrequency
             ORDER BY freq DESC
         """
-        with _get_driver(self.neo_info) as driver:
-            with _get_session(driver, database) as session:
-                try:
-                    result = session.execute_read(
-                        _read_transaction_function,query=query)
-                except ServiceUnavailable as exception:
-                    raise ServiceUnavailable() from exception
-                except ClientError:
-                    raise ClientError(error_msg)
-        return result
+        return self._execute_read(query, database, self._apoc_error_msg)
 
     def get_node_multilabel_freq(self, database: Optional[str] = None) -> DataFrame:
         """Use to obtain the graph node multi-label frequency.
@@ -466,26 +479,14 @@ class Neo4jInstance:
                 When APOC Library is not install correctly in your Neo4j
                 deployment.
         """
-        error_msg = """
-                APOC Library not detected.
-                Please install it before procceding.
-            """
+
         query = """
             MATCH (n)
             WITH labels(n) as nodeLabels
             WHERE size(nodeLabels)>1
             RETURN nodeLabels, count(*) as frequency
         """
-        with _get_driver(self.neo_info) as driver:
-            with _get_session(driver, database) as session:
-                try:
-                    result = session.execute_read(
-                        _read_transaction_function,query=query)
-                except ServiceUnavailable as exception:
-                    raise ServiceUnavailable() from exception
-                except ClientError:
-                    raise ClientError(error_msg)
-        return result
+        return self._execute_read(query, database, self._apoc_error_msg)
 
     def get_rela_type_freq(self, database: Optional[str] = None) -> DataFrame:
         """Use to obtain the graph relationship type frequency.
@@ -508,10 +509,7 @@ class Neo4jInstance:
                 When APOC Library is not install correctly in your Neo4j
                 deployment.
         """
-        error_msg = """
-                APOC Library not detected.
-                Please install it before procceding.
-            """
+
         query = """
             MATCH()-[]->()
             WITH count(*) AS relCount
@@ -525,16 +523,7 @@ class Neo4jInstance:
             round(relFreq*factor)/factor AS relativeFrequency
             ORDER BY freq DESC;
         """
-        with _get_driver(self.neo_info) as driver:
-            with _get_session(driver, database) as session:
-                try:
-                    result = session.execute_read(
-                        _read_transaction_function,query=query)
-                except ServiceUnavailable as exception:
-                    raise ServiceUnavailable() from exception
-                except ClientError:
-                    raise ClientError(error_msg)
-        return result
+        return self._execute_read(query, database, self._apoc_error_msg)
 
     def get_properties(self, database: Optional[str] = None) -> DataFrame:
         """Use to obtain the node and relationship properties.
@@ -557,26 +546,14 @@ class Neo4jInstance:
                 When APOC Library is not install correctly in your Neo4j
                 deployment.
         """
-        error_msg = """
-                APOC Library not detected.
-                Please install it before procceding.
-            """
+
         query = """
             CALL apoc.meta.data() YIELD label,property,type,elementType
             WHERE type<>'RELATIONSHIP'
             RETURN elementType,label,property,type
             ORDER BY elementType,label,property;
         """
-        with _get_driver(self.neo_info) as driver:
-            with _get_session(driver, database) as session:
-                try:
-                    result = session.execute_read(
-                        _read_transaction_function,query=query)
-                except ServiceUnavailable as exception:
-                    raise ServiceUnavailable() from exception
-                except ClientError:
-                    raise ClientError(error_msg)
-        return result
+        return self._execute_read(query, database, self._apoc_error_msg)
 
     def get_constraints(self, database: Optional[str] = None) -> DataFrame:
         """Use to obtain the constraints in the graph.
@@ -599,23 +576,11 @@ class Neo4jInstance:
                 When APOC Library is not install correctly in your Neo4j
                 deployment.
         """
-        error_msg = """
-                APOC Library not detected.
-                Please install it before procceding.
-            """
+
         query = """
             SHOW CONSTRAINTS
         """
-        with _get_driver(self.neo_info) as driver:
-            with _get_session(driver, database) as session:
-                try:
-                    result = session.execute_read(
-                        _read_transaction_function,query=query)
-                except ServiceUnavailable as exception:
-                    raise ServiceUnavailable() from exception
-                except ClientError:
-                    raise ClientError(error_msg)
-        return result
+        return self._execute_read(query, database, self._apoc_error_msg)
 
     def get_indexes(self, database: Optional[str] = None) -> DataFrame:
         """Use to obtain the indexes in the graph.
@@ -638,23 +603,11 @@ class Neo4jInstance:
                 When APOC Library is not install correctly in your Neo4j
                 deployment.
         """
-        error_msg = """
-                APOC Library not detected.
-                Please install it before procceding.
-            """
+
         query = """
             SHOW INDEX
         """
-        with _get_driver(self.neo_info) as driver:
-            with _get_session(driver, database) as session:
-                try:
-                    result = session.execute_read(
-                        _read_transaction_function,query=query)
-                except ServiceUnavailable as exception:
-                    raise ServiceUnavailable() from exception
-                except ClientError:
-                    raise ClientError(error_msg)
-        return result
+        return self._execute_read(query, database, self._apoc_error_msg)
 
     def get_rela_source_target_freq(self, database: Optional[str] = None) -> DataFrame:
         """Use to obtain the relationships source and target frequency.
@@ -677,27 +630,15 @@ class Neo4jInstance:
                 When APOC Library is not install correctly in your Neo4j
                 deployment.
         """
-        error_msg = """
-                APOC Library not detected.
-                Please install it before procceding.
-            """
+
         query = """
             CALL apoc.meta.stats() YIELD relTypes
         """
-        with _get_driver(self.neo_info) as driver:
-            with _get_session(driver, database) as session:
-                try:
-                    result = session.execute_read(
-                        _read_transaction_function,query=query)
-                except ServiceUnavailable as exception:
-                    raise ServiceUnavailable() from exception
-                except ClientError:
-                    raise ClientError(error_msg)
-        stat_dict = result.iloc[0,0]
+        stat_dict = self._execute_read(query, database, self._apoc_error_msg).iloc[0,0]
         stats_dicts = []
         for key,value in stat_dict.items():
-            nodes = re.findall(r"\(:?(\w*)\)",key)
-            relationship = re.findall(r"\[:?(\w*)\]",key)[0]
+            nodes = _NODE_LABEL_RE.findall(key)
+            relationship = _REL_TYPE_RE.findall(key)[0]
             info = {'sourceLabel':nodes[0],'relationshipType':relationship,'targetLabel':nodes[1],
                     'frequency':value}
             stats_dicts.append(info)
@@ -725,23 +666,11 @@ class Neo4jInstance:
                 When APOC Library is not install correctly in your Neo4j
                 deployment.
         """
-        error_msg = """
-                APOC Library not detected.
-                Please install it before procceding.
-            """
+
         query = """
             CALL apoc.meta.schema() YIELD value
         """
-        with _get_driver(self.neo_info) as driver:
-            with _get_session(driver, database) as session:
-                try:
-                    result = session.execute_read(
-                        _read_transaction_function,query=query)
-                except ServiceUnavailable as exception:
-                    raise ServiceUnavailable() from exception
-                except ClientError:
-                    raise ClientError(error_msg)
-        schema = result.iloc[0,0]
+        schema = self._execute_read(query, database, self._apoc_error_msg).iloc[0,0]
         network = Network(notebook=True,cdn_resources = "remote",directed=True,
                           filter_menu=True,height="800px", width="100%")
         options = """
@@ -780,31 +709,6 @@ class Neo4jInstance:
             rela_parts = relationship.split("|")
             network.add_edge(rela_parts[0],rela_parts[2],title=rela_parts[1])
         return network
-
-    def _execute_write_parallel(self, neo_info, database, query,
-                       rows: Optional[Dict[str, Any]] = None,
-                       parameters: Optional[Dict[str, Any]] = None
-                      ):
-        if parameters:
-            params = parameters
-        else:
-            params = {}
-        with _get_driver(neo_info) as driver:
-            with _get_session(driver, database) as session:
-                try:
-                    if rows:
-                        results = session.execute_write(
-                            _write_transaction_function, query,
-                            rows = rows, **params).counters.__dict__
-                    else:
-                        results = session.execute_write(
-                            _write_transaction_function, query,
-                            **params).counters.__dict__
-                except ServiceUnavailable as exception:
-                    raise ServiceUnavailable() from exception
-                except ClientError as exception:
-                    raise ClientError() from exception
-        return results
 
     def _execute_write(self, session, query,
                        rows: Optional[Dict[str, Any]] = None,

@@ -12,6 +12,8 @@ from typing import Tuple, Any, Callable, List
 from urllib.request import urlopen
 from urllib.error import URLError, HTTPError
 
+_ROW_ATTR_RE = re.compile(r'\brow\.\w+')
+
 def get_file_name(file_type: str, file_parts: List[str]) -> str:
     """Create a string representation of a file name.
 
@@ -94,7 +96,7 @@ def timing(function : Callable) -> Tuple[Any, float]:
         start = time.perf_counter()
         result = function(*args, **kwargs)
         end = time.perf_counter()
-        elapsed_time = end - start * 1.0
+        elapsed_time = end - start
         return result, elapsed_time
     return wrap
 
@@ -143,5 +145,5 @@ def get_columns_diff(query: str, columns: List[str]) -> List[str]:
        List containing the columns that Cypher is trying to access that are not
        included in the columns names of the data frame.
     """
-    cypher_attributes = set([w.split('.')[1] for w in re.findall(r'\brow\.\w+',query)])
+    cypher_attributes = set([w.split('.')[1] for w in _ROW_ATTR_RE.findall(query)])
     return [a for a in cypher_attributes if a not in columns]
