@@ -24,6 +24,7 @@ It supports the following features:
 - __<u>Constraints</u>__: Get information of all constraints in the graph.
 - __<u>Indexes</u>__: Get information of all indexes in the graph.
 - __<u>Schema Visualization</u>__: Visualize the graph schema.
+- __<u>Query Graph Visualization</u>__: Visualize the result of a Cypher query as an interactive graph.
 
 </td>
 </tr>
