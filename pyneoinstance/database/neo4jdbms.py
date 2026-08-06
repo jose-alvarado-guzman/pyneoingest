@@ -311,44 +311,39 @@ class Neo4jInstance:
                 is larger than the number of rows in it.
         """
         row_num = data.shape[0]
-        batchSize = batchSize if batchSize <= row_num else row_num
-        msg = f'Partitioning the data in batches of size {batchSize:,.0f}'
-        self.__logger.info(msg)
+        batchSize = min(batchSize, row_num)
+        self.__logger.info(f'Partitioning the data in batches of size {batchSize:,.0f}')
         chunks = get_batches(data, batchSize)
-        data_chunks = [data.iloc[d].to_dict('records') for d in chunks]
         partitions = len(chunks)
-        parallel = parallel if len(chunks)>1 else False
+        parallel = parallel if partitions > 1 else False
         params = parameters or {}
 
+        for query in queries:
+            col_diff = get_columns_diff(query, data.columns)
+            if col_diff:
+                self.__logger.warning(f'These columns are not in your data: {col_diff}')
+
+        results = []
         if parallel:
             workers_num = workers if (workers and workers > 0) else os.cpu_count()
-            msg = f'Loading {partitions:,.0f} data chunks using {workers_num} thread(s)'
-            self.__logger.info(msg)
-            results = []
-            for query in queries:
-                col_diff = get_columns_diff(query, data.columns)
-                if len(col_diff) != 0:
-                    self.__logger.warning(
-                        f'These columns are not in your data: {col_diff}')
+            self.__logger.info(
+                f'Loading {partitions:,.0f} data chunks using {workers_num} thread(s)')
 
-                def run_chunk(chunk, q=query):
-                    with _get_session(self._driver, database) as session:
-                        return self._execute_write(session, q, chunk, params)
-
-                with ThreadPoolExecutor(max_workers=workers_num) as executor:
-                    results.extend(executor.map(run_chunk, data_chunks))
+            with ThreadPoolExecutor(max_workers=workers_num) as executor:
+                for query in queries:
+                    def run_chunk(chunk_indices, q=query):
+                        rows = data.iloc[chunk_indices].to_dict('records')
+                        with _get_session(self._driver, database) as session:
+                            return self._execute_write(session, q, rows, params)
+                    results.extend(executor.map(run_chunk, chunks))
         else:
-            msg = f'Loading {partitions:,.0f} data chunks sequentially'
-            self.__logger.info(msg)
-            results = []
+            self.__logger.info(f'Loading {partitions:,.0f} data chunks sequentially')
             with _get_session(self._driver, database) as session:
                 for query in queries:
-                    col_diff = get_columns_diff(query, data.columns)
-                    if len(col_diff) != 0:
-                        self.__logger.warning(
-                            f'These columns are not in your data: {col_diff}')
-                    for d in data_chunks:
-                        results.append(self._execute_write(session, query, d, params))
+                    for chunk_indices in chunks:
+                        rows = data.iloc[chunk_indices].to_dict('records')
+                        results.append(self._execute_write(session, query, rows, params))
+
         results_agg = defaultdict(int)
         for result in results:
             for key, value in result.items():
