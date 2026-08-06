@@ -332,7 +332,7 @@ class Neo4jInstance:
             with ThreadPoolExecutor(max_workers=workers_num) as executor:
                 for query in queries:
                     def run_chunk(chunk_indices, q=query):
-                        rows = data.iloc[chunk_indices].to_dict('records')
+                        rows = data.loc[chunk_indices].to_dict('records')
                         with _get_session(self._driver, database) as session:
                             return self._execute_write(session, q, rows, params)
                     results.extend(executor.map(run_chunk, chunks))
@@ -341,7 +341,7 @@ class Neo4jInstance:
             with _get_session(self._driver, database) as session:
                 for query in queries:
                     for chunk_indices in chunks:
-                        rows = data.iloc[chunk_indices].to_dict('records')
+                        rows = data.loc[chunk_indices].to_dict('records')
                         results.append(self._execute_write(session, query, rows, params))
 
         results_agg = defaultdict(int)
