@@ -110,7 +110,7 @@ class Neo4jInstance:
         Parameters
         ----------
         uri : str
-           The Uniform Resource Identifier of the database.
+            The Uniform Resource Identifier of the database.
         user : str
             The Neo4j username.
         password : str
