@@ -193,9 +193,7 @@ class TestNeo4jInstance(unittest.TestCase):
             {'sourceLabel':'','relationshipType':'ACTED_IN','targetLabel':'','frequency':56914},
             {'sourceLabel':'','relationshipType':'ACTED_IN','targetLabel':'Movie','frequency':56914},
             {'sourceLabel':'Person','relationshipType':'ACTED_IN','targetLabel':'','frequency':56914}
-        ]
-        )
-        solution.index = [2,0,1]
+        ])
         self.assertEqual(result,solution)
 
 if __name__ == '__main__':

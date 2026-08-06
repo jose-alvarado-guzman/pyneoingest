@@ -119,7 +119,7 @@ def get_batches(data: DataFrame, batch_size) -> List[List[int]]:
     indexes = data.index
     partitions = records // batch_size
     if partitions < 2:
-        batches = [list(indexes)]
+        batches = [indexes.tolist()]
     else:
         remainder = records % batch_size
         array = np.array(

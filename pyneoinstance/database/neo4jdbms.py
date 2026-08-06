@@ -13,6 +13,7 @@ from typing import Optional, List, Dict, Any
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 import logging
+import os
 import re
 import numpy as np
 from pandas import DataFrame
@@ -40,7 +41,6 @@ def _get_driver(neo_info : Dict[str, str]):
                 auth=(neo_info['user'], neo_info['password']))
     except ServiceUnavailable as exception:
         raise ServiceUnavailable()
-        sys.exit()
     except AuthError as exception:
         raise  AuthError() from exception
     except ConfigurationError as exception:
@@ -126,11 +126,10 @@ class Neo4jInstance:
         self.neo_info['encrypted'] = kwargs.get('encrypted') or ''
         logging_type = logging.INFO if verbose else logging.WARNING
         self.__logger = get_logger('pyneoinstance', logging_type)
-        stream_handler = logging.StreamHandler()
-        formatter = logging.Formatter(
-            '%(levelname)s - %(message)s')
-        stream_handler.setFormatter(formatter)
-        self.__logger.addHandler(stream_handler)
+        if not self.__logger.handlers:
+            stream_handler = logging.StreamHandler()
+            stream_handler.setFormatter(logging.Formatter('%(levelname)s - %(message)s'))
+            self.__logger.addHandler(stream_handler)
         self._driver = _get_driver(self.neo_info)
 
     def close(self):
@@ -185,10 +184,7 @@ class Neo4jInstance:
         ClientError
             When there is a Cypher syntax error or datatype error.
     """
-        if parameters:
-            params = parameters
-        else:
-            params = {}
+        params = parameters or {}
         with _get_session(self._driver, database) as session:
             try:
                 result = session.execute_read(
@@ -228,10 +224,7 @@ class Neo4jInstance:
             ClientError
                 When their is a Cypher syntax error or datatype error.
         """
-        if parameters:
-            params = parameters
-        else:
-            params = {}
+        params = parameters or {}
         results = defaultdict(int)
         with _get_session(self._driver, database) as session:
             for query in queries:
@@ -325,13 +318,9 @@ class Neo4jInstance:
         data_chunks = [data.iloc[d].to_dict('records') for d in chunks]
         partitions = len(chunks)
         parallel = parallel if len(chunks)>1 else False
-        if parameters:
-            params = parameters
-        else:
-            params = {}
+        params = parameters or {}
 
         if parallel:
-            import os
             workers_num = workers if (workers and workers > 0) else os.cpu_count()
             msg = f'Loading {partitions:,.0f} data chunks using {workers_num} thread(s)'
             self.__logger.info(msg)
@@ -353,16 +342,13 @@ class Neo4jInstance:
             self.__logger.info(msg)
             results = []
             with _get_session(self._driver, database) as session:
-                for d in data_chunks:
-                        for query in queries:
-                            col_diff = get_columns_diff(query,data.columns)
-                            msg = f'This columns are not in your data: {col_diff}'
-                            if len(col_diff)!=0:
-                                self.__logger.warning(msg)
-                            results.append(self._execute_write(session,
-                                                          query,
-                                                          d,
-                                                          params))
+                for query in queries:
+                    col_diff = get_columns_diff(query, data.columns)
+                    if len(col_diff) != 0:
+                        self.__logger.warning(
+                            f'These columns are not in your data: {col_diff}')
+                    for d in data_chunks:
+                        results.append(self._execute_write(session, query, d, params))
         results_agg = defaultdict(int)
         for result in results:
             for key, value in result.items():
@@ -414,12 +400,8 @@ class Neo4jInstance:
                 When the number of batch sizes to split the DataFrame on
                 is larger than the number of rows in it.
         """
-        if parameters:
-            params = parameters
-        else:
-            params = {}
         result = self.execute_write_queries_with_data(
-            [query], data,database, batchSize, parallel, workers, params)
+            [query], data, database, batchSize, parallel, workers, parameters)
         return result
 
     def get_node_label_freq(self, database: Optional[str] = None) -> DataFrame:
@@ -644,6 +626,7 @@ class Neo4jInstance:
             stats_dicts.append(info)
         stats_df = DataFrame(stats_dicts)
         stats_df.sort_values(by=['relationshipType','sourceLabel','targetLabel'],inplace=True)
+        stats_df.reset_index(drop=True, inplace=True)
         return stats_df
 
     def get_schema_visualization(self, database: Optional[str] = None) -> Network:
@@ -714,10 +697,7 @@ class Neo4jInstance:
                        rows: Optional[Dict[str, Any]] = None,
                        parameters: Optional[Dict[str, Any]] = None
                       ):
-        if parameters:
-            params = parameters
-        else:
-            params = {}
+        params = parameters or {}
         try:
             if rows:
                 results = session.execute_write(

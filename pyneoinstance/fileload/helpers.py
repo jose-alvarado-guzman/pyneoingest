@@ -28,8 +28,7 @@ def lower_dict_keys(dictionary: Dict[str, Any]) -> Dict[str, Any]:
         Dictionary with the same values as the source dictionary but all keys
         are converted to lower case.
     """
-    lower_keys = [key.lower() for key in dictionary.keys()]
-    return dict(zip(lower_keys, dictionary.values()))
+    return {k.lower(): v for k, v in dictionary.items()}
 
 def check_required_keys(required_keys: List[str], keys: List[str]) -> List[str]:
     """Verify if the elements in one list are contained in the other list.
