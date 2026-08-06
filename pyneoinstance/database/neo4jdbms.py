@@ -62,6 +62,10 @@ def _read_transaction_function(transaction, query, **kwargs):
     data = DataFrame(results.values(), columns=results.keys())
     return data
 
+def _graph_transaction_function(transaction, query, **kwargs):
+    result = transaction.run(query, **kwargs)
+    return result.graph()
+
 class Neo4jInstance:
     """Class use to handle Neo4j requests.
 
@@ -76,6 +80,9 @@ class Neo4jInstance:
         execute_write_query(query: str, database: Optional[str],
                             kwargs: Optional[Dict[str, Any]]) -> None
             Execute a write query to a specific database.
+        get_query_visualization(query: str, database: Optional[str],
+                               parameters: Optional[Dict[str, Any]]) -> Network
+            Execute a read query and return the result as a pyvis graph visualization.
         execute_write_query_with_data(self, query: str, data: DataFrame,
                                       database: Optional[str] = None,
                                       partitions: Optional[int] = 1,
@@ -193,6 +200,59 @@ class Neo4jInstance:
             except ClientError as exception:
                 raise ClientError(str(exception)) from exception
         return result
+
+    def get_query_visualization(self, query: str,
+                                database: Optional[str] = None,
+                                parameters: Optional[Dict[str, Any]] = None
+                               ) -> Network:
+        """Execute a read query and return the result as a graph visualization.
+
+            Parameters
+            ----------
+            query : str
+                Cypher query returning nodes and/or relationships.
+            database : str, optional
+                Name of the Neo4j database on which to execute the query.
+                If not provided the default database is used.
+            parameters : Dict[str, Any], optional
+                Extra arguments containing optional Cypher parameters.
+
+            Returns
+            -------
+            Network
+                Pyvis Network object. Render with ``network.write_html('graph.html')``.
+
+            Raises
+            ------
+            ServiceUnavailable
+                When the Neo4j instance is not available.
+            ClientError
+                When there is a Cypher syntax error or datatype error.
+        """
+        params = parameters or {}
+        network = Network(cdn_resources="remote", directed=True,
+                          filter_menu=True, height="800px", width="100%")
+        with _get_session(self._driver, database) as session:
+            try:
+                graph = session.execute_read(
+                    _graph_transaction_function, query=query, **params)
+            except ServiceUnavailable as exception:
+                raise ServiceUnavailable() from exception
+            except ClientError as exception:
+                raise ClientError(str(exception)) from exception
+
+        for node in graph.nodes:
+            label = next(iter(node.labels), "")
+            title = "\n".join(f"{k}: {v}" for k, v in node.items())
+            network.add_node(node.element_id, label=label, title=title or label)
+
+        for rel in graph.relationships:
+            props = "\n".join(f"{k}: {v}" for k, v in rel.items())
+            title = f"{rel.type}\n{props}" if props else rel.type
+            network.add_edge(rel.start_node.element_id,
+                             rel.end_node.element_id,
+                             title=title, label=rel.type)
+        return network
 
     def execute_write_queries(self, queries: List[str],
                             database: Optional[str] = None,
