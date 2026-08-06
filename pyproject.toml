@@ -21,9 +21,10 @@ dependencies = [
     "neo4j>=5.0.0",
     "pandas",
     "PyYAML",
-    "pyvis"
+    "pyvis",
+    "neo4j-viz>=0.5.0"
 ]
-requires-python = ">=3.8"
+requires-python = ">=3.10"
 
 [project.optional-dependencies]
 rust = ["neo4j-rust-ext>=5.0.0"]

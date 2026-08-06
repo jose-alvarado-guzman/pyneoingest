@@ -14,7 +14,7 @@ import pandas as pd
 import numpy as np
 import pandas.testing as pd_testing
 from neo4j.exceptions import ClientError
-from pyvis.network import Network
+from neo4j_viz import VisualizationGraph
 from .context import database
 from .context import fileload
 from . import test_dir
@@ -215,9 +215,9 @@ class TestReadAndEdaMethods(unittest.TestCase):
             RETURN p, r, m LIMIT 10
         """
         result = self.graph.get_query_visualization(query, self.db)
-        self.assertIsInstance(result, Network)
+        self.assertIsInstance(result, VisualizationGraph)
         self.assertGreater(len(result.nodes), 0)
-        self.assertGreater(len(result.edges), 0)
+        self.assertGreater(len(result.relationships), 0)
 
     def test_get_rela_source_target_freq(self):
         """Test relationship source/target frequency EDA."""

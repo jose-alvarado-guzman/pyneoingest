@@ -18,6 +18,8 @@ import re
 from pandas import DataFrame
 from neo4j import GraphDatabase
 from pyvis.network import Network
+from neo4j_viz import VisualizationGraph
+from neo4j_viz.neo4j import from_neo4j
 from neo4j.exceptions import ServiceUnavailable
 from neo4j.exceptions import AuthError
 from neo4j.exceptions import ClientError
@@ -64,6 +66,7 @@ def _read_transaction_function(transaction, query, **kwargs):
 
 def _graph_transaction_function(transaction, query, **kwargs):
     result = transaction.run(query, **kwargs)
+    list(result)  # consume all records so result.graph() is fully populated
     return result.graph()
 
 class Neo4jInstance:
@@ -203,8 +206,10 @@ class Neo4jInstance:
 
     def get_query_visualization(self, query: str,
                                 database: Optional[str] = None,
-                                parameters: Optional[Dict[str, Any]] = None
-                               ) -> Network:
+                                parameters: Optional[Dict[str, Any]] = None,
+                                node_caption: Optional[str] = 'labels',
+                                relationship_caption: Optional[str] = 'type'
+                               ) -> VisualizationGraph:
         """Execute a read query and return the result as a graph visualization.
 
             Parameters
@@ -216,11 +221,21 @@ class Neo4jInstance:
                 If not provided the default database is used.
             parameters : Dict[str, Any], optional
                 Extra arguments containing optional Cypher parameters.
+            node_caption : str, optional
+                Node property to use as the caption. Defaults to 'labels'.
+            relationship_caption : str, optional
+                Relationship property to use as the caption. Defaults to 'type'.
 
             Returns
             -------
-            Network
-                Pyvis Network object. Render with ``network.write_html('graph.html')``.
+            VisualizationGraph
+                neo4j-viz VisualizationGraph object.
+                In a Jupyter notebook call ``vg.render()`` to display it inline.
+                To save as a standalone HTML file, wrap the fragment in a full document::
+
+                    fragment = vg.render().data
+                    with open('graph.html', 'w') as f:
+                        f.write(f'<!DOCTYPE html><html><body>{fragment}</body></html>')
 
             Raises
             ------
@@ -230,8 +245,6 @@ class Neo4jInstance:
                 When there is a Cypher syntax error or datatype error.
         """
         params = parameters or {}
-        network = Network(cdn_resources="remote", directed=True,
-                          filter_menu=True, height="800px", width="100%")
         with _get_session(self._driver, database) as session:
             try:
                 graph = session.execute_read(
@@ -240,19 +253,9 @@ class Neo4jInstance:
                 raise ServiceUnavailable() from exception
             except ClientError as exception:
                 raise ClientError(str(exception)) from exception
-
-        for node in graph.nodes:
-            label = next(iter(node.labels), "")
-            title = "\n".join(f"{k}: {v}" for k, v in node.items())
-            network.add_node(node.element_id, label=label, title=title or label)
-
-        for rel in graph.relationships:
-            props = "\n".join(f"{k}: {v}" for k, v in rel.items())
-            title = f"{rel.type}\n{props}" if props else rel.type
-            network.add_edge(rel.start_node.element_id,
-                             rel.end_node.element_id,
-                             title=title, label=rel.type)
-        return network
+        return from_neo4j(graph,
+                          node_caption=node_caption,
+                          relationship_caption=relationship_caption)
 
     def execute_write_queries(self, queries: List[str],
                             database: Optional[str] = None,
