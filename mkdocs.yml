@@ -1,0 +1,44 @@
+site_name: PyNeoInstance
+site_description: A Python package for submitting Cypher queries to Neo4j and performing graph Exploratory Data Analysis.
+site_url: https://jose-alvarado-guzman.github.io/pyneoingest/
+repo_url: https://github.com/jose-alvarado-guzman/pyneoingest
+repo_name: jose-alvarado-guzman/pyneoingest
+
+theme:
+  name: material
+  logo: images/PyNeoInstanceLogo.png
+  favicon: images/PyNeoInstanceLogo.png
+  palette:
+    - scheme: default
+      primary: deep purple
+      accent: purple
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - scheme: slate
+      primary: deep purple
+      accent: purple
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.top
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+
+nav:
+  - Home: index.md
+  - Getting Started: getting-started.md
+  - Graph EDA: eda.md
+  - Visualization: visualization.md
+
+markdown_extensions:
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.superfences
+  - pymdownx.inlinehilite
+  - admonition
+  - attr_list
