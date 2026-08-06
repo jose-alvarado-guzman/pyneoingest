@@ -65,7 +65,7 @@ class TestUtilFunctions(unittest.TestCase):
 
     def test_get_batches(self):
         batch_size = 100_000
-        data = pd.read_csv(os.path.join(test_dir,'age_data.csv'))
+        data = pd.read_csv(os.path.join(test_dir,'people.csv'))
         batches = util.get_batches(data, batch_size)
         records = data.shape[0]
         remainder = records % batch_size

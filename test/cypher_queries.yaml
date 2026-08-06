@@ -1,7 +1,7 @@
 database: neo4j
 pre_ingest:
-  - CREATE CONSTRAINT nkPerson IF NOT EXISTS FOR(n:Person) REQUIRE (n.personId) IS NODE KEY; 
-  - CREATE CONSTRAINT nkMovie IF NOT EXISTS FOR(n:Movie) REQUIRE (n.movieId) IS NODE KEY;
+  - CREATE CONSTRAINT nkPerson IF NOT EXISTS FOR(n:Person) REQUIRE (n.personId) IS UNIQUE;
+  - CREATE CONSTRAINT nkMovie IF NOT EXISTS FOR(n:Movie) REQUIRE (n.movieId) IS UNIQUE;
 
 queries:
   load_person: |
