@@ -137,5 +137,5 @@ def get_columns_diff(query: str, columns: List[str]) -> List[str]:
        List containing the columns that Cypher is trying to access that are not
        included in the columns names of the data frame.
     """
-    cypher_attributes = set([w.split('.')[1] for w in _ROW_ATTR_RE.findall(query)])
+    cypher_attributes = {w.split('.')[1] for w in _ROW_ATTR_RE.findall(query)}
     return [a for a in cypher_attributes if a not in columns]

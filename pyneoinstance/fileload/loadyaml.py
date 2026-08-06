@@ -58,7 +58,7 @@ def load_yaml_file(yaml_file: str,
         config_keys = configuration_object.keys()
         if required_keys:
             missing_keys = check_required_keys(required_keys, config_keys)
-            if len(missing_keys) > 0:
+            if missing_keys:
                 error_msg = error_messages[
                     'ValueError'] + ','.join( missing_keys)
                 raise ValueError(error_msg)

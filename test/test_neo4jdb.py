@@ -122,7 +122,7 @@ class TestNeo4jInstance(unittest.TestCase):
         # Test get_node_labels_freq
         print('Get node labels freq')
         role_file = os.path.join(test_dir,'roles.csv')
-        role_df = pd.read_csv(role_file).replace(np.NaN,'')
+        role_df = pd.read_csv(role_file).replace(np.nan,'')
         result = self.graph.get_node_label_freq(
                 self.queries['database'])
         solution = pd.DataFrame([

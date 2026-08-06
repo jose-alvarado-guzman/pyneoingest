@@ -15,7 +15,6 @@ from concurrent.futures import ThreadPoolExecutor
 import logging
 import os
 import re
-import numpy as np
 from pandas import DataFrame
 from neo4j import GraphDatabase
 from pyvis.network import Network
@@ -40,7 +39,7 @@ def _get_driver(neo_info : Dict[str, str]):
                 neo_info['uri'],
                 auth=(neo_info['user'], neo_info['password']))
     except ServiceUnavailable as exception:
-        raise ServiceUnavailable()
+        raise ServiceUnavailable() from exception
     except AuthError as exception:
         raise  AuthError() from exception
     except ConfigurationError as exception:
@@ -152,8 +151,8 @@ class Neo4jInstance:
                     _read_transaction_function, query=query)
             except ServiceUnavailable as exception:
                 raise ServiceUnavailable() from exception
-            except ClientError:
-                raise ClientError(error_msg)
+            except ClientError as exception:
+                raise ClientError(error_msg) from exception
 
     def execute_read_query(self, query: str,
                            database: Optional[str] = None,
@@ -192,7 +191,7 @@ class Neo4jInstance:
             except ServiceUnavailable as exception:
                 raise ServiceUnavailable() from exception
             except ClientError as exception:
-                raise ClientError() from exception
+                raise ClientError(str(exception)) from exception
         return result
 
     def execute_write_queries(self, queries: List[str],
@@ -236,7 +235,7 @@ class Neo4jInstance:
 
     def execute_write_query(self, query: str,
                             database: Optional[str] = None,
-                            parameters: Optional[Dict['str',Any]] = None
+                            parameters: Optional[Dict[str, Any]] = None
                            ) -> Dict[str, Any]:
         """Execute a write query to a specific database.
 
@@ -463,7 +462,7 @@ class Neo4jInstance:
             WHERE size(nodeLabels)>1
             RETURN nodeLabels, count(*) as frequency
         """
-        return self._execute_read(query, database, self._apoc_error_msg)
+        return self._execute_read(query, database)
 
     def get_rela_type_freq(self, database: Optional[str] = None) -> DataFrame:
         """Use to obtain the graph relationship type frequency.
@@ -694,7 +693,7 @@ class Neo4jInstance:
                       ):
         params = parameters or {}
         try:
-            if rows:
+            if rows is not None:
                 results = session.execute_write(
                     _write_transaction_function, query,
                     rows = rows, **params).counters.__dict__

@@ -1,4 +1,4 @@
-"""Use to provide context to the test module"""
+"""Re-exports utility functions for use by the database module."""
 import os
 import sys
 sys.path.insert(0, os.path.abspath(
