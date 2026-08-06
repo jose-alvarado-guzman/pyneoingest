@@ -5,7 +5,6 @@ import functools
 import time
 import logging
 import re
-import numpy as np
 from pandas import DataFrame
 from datetime import datetime
 from typing import Tuple, Any, Callable, List
@@ -117,17 +116,10 @@ def get_batches(data: DataFrame, batch_size) -> List[List[int]]:
     """
     records = data.shape[0]
     indexes = data.index
-    partitions = records // batch_size
-    if partitions < 2:
-        batches = [indexes.tolist()]
-    else:
-        remainder = records % batch_size
-        array = np.array(
-            indexes[:records-remainder]).reshape(partitions,-1)
-        batches = array.tolist()
-        if remainder > 0:
-            batches.append(indexes[-remainder:])
-    return batches
+    if records <= batch_size:
+        return [indexes.tolist()]
+    return [indexes[i:i+batch_size].tolist()
+            for i in range(0, records, batch_size)]
 
 def get_columns_diff(query: str, columns: List[str]) -> List[str]:
     """Get a list of the columns that a Cypher query is trying to access that are
