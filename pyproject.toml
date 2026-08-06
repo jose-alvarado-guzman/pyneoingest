@@ -18,7 +18,7 @@ classifiers = [
 ]
 keywords = ["neo4j", "graph", "cypher"]
 dependencies = [
-    "neo4j>=5.0.0",
+    "neo4j-rust-ext>=5.0.0",
     "pandas",
     "PyYAML",
     "pyvis",
@@ -27,7 +27,7 @@ dependencies = [
 requires-python = ">=3.10"
 
 [project.optional-dependencies]
-rust = ["neo4j-rust-ext>=5.0.0"]
+docs = ["mkdocs-material>=9.0.0"]
 
 [tool.setuptools.package-data]
 pyneoinstance = ["py.typed"]

@@ -29,11 +29,7 @@ PyNeoInstance is a Python package that provides a user-friendly API for submitti
 pip install pyneoinstance
 ```
 
-For faster data serialization via the Rust-accelerated Neo4j driver (Python 3.10+ only):
-
-```bash
-pip install pyneoinstance[rust]
-```
+The Rust-accelerated Neo4j driver (`neo4j-rust-ext`) is included by default for faster data serialization.
 
 ## Requirements
 
