@@ -2,7 +2,7 @@
 
 <table>
 <tr>
-<td><img src="images/PyNeoInstanceLogo.png" alt="PyNeoInstance Logo" width="300"></td>
+<td><img src="https://raw.githubusercontent.com/jose-alvarado-guzman/pyneoingest/main/images/PyNeoInstanceLogo.png" alt="PyNeoInstance Logo" width="300"></td>
 <td valign="top">
 
 ## What is it?
@@ -318,7 +318,7 @@ vg.render()
 with open('graph.html', 'w') as f:
     f.write(f'<!DOCTYPE html><html><body>{vg.render().data}</body></html>')
 ```
-<img src="images/query_visualization.png" alt="Query Graph Visualization" width="600">
+<img src="https://raw.githubusercontent.com/jose-alvarado-guzman/pyneoingest/main/images/query_visualization.png" alt="Query Graph Visualization" width="600">
 
 ### Schema Visualization
 The `get_schema_visualization` method provides an interactive visualization of the graph schema with the ability to filter by label. Node labels are displayed as strings next to nodes; relationship types are shown on mouse hover.
