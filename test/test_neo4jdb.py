@@ -97,6 +97,20 @@ class TestWriteMethods(unittest.TestCase):
         self.assertEqual(
             {'nodes_created': 1, 'labels_added': 2, 'properties_set': 4}, result)
 
+    def test_execute_write_query_in_transactions(self):
+        """Test a query with 'CALL { ... } IN TRANSACTIONS', which requires
+        an implicit transaction rather than the managed transaction used by
+        execute_write_query for regular queries."""
+        query = """
+            UNWIND range(1, 3) AS i
+            CALL (i) {
+                CREATE (:Actor {id: i})
+            } IN TRANSACTIONS OF 1 ROWS
+        """
+        result = self.graph.execute_write_query(query, self.db)
+        self.assertEqual(
+            {'nodes_created': 3, 'labels_added': 3, 'properties_set': 3}, result)
+
 
 class TestReadAndEdaMethods(unittest.TestCase):
     """Test read and EDA methods. Data is loaded once for the entire class."""

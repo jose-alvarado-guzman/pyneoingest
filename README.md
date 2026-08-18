@@ -93,7 +93,7 @@ This YAML file can then be loaded in Python and this information can be retrieve
 ```python
 from pyneoinstance import load_yaml_file
 
-config = load_yaml_file(configuration.yaml)
+config = load_yaml_file('configuration.yaml')
 db_info = config['db_info']
 graph = Neo4jInstance(db_info['uri'], db_info['user'], db_info['password'])
 ```
@@ -336,5 +336,6 @@ Open `schema.html` in your browser to explore the schema interactively.
 ## More detailed examples
 
 For more detailed examples please refer to the following articles:
-* Data ingestion: [PyNeoInstance: A User-Friendly Python Library for Neo4j](https://medium.com/@a-gilmore/pyneoinstance-a-user-friendly-python-library-for-neo4j-dbefa3117bb2).
+* Data Ingestion: [PyNeoInstance: A User-Friendly Python Library for Neo4j](https://medium.com/@a-gilmore/pyneoinstance-a-user-friendly-python-library-for-neo4j-dbefa3117bb2).
 * Graph EDA: [Performing graph EDA with the PyNeoInstance Python Package](https://medium.com/@jose.alvarado-guzman/0c0f6f230aa9)
+* ETL Best Practices: [Python & Neo4j: ETL Best Practices](https://medium.com/@jose.alvarado-guzman/python-neo4j-etl-best-practices-83265ee201d6)

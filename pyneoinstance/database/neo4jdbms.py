@@ -28,6 +28,7 @@ from .context import get_logger, get_batches, get_columns_diff
 
 _NODE_LABEL_RE = re.compile(r"\(:?(\w*)\)")
 _REL_TYPE_RE = re.compile(r"\[:?(\w*)\]")
+_IMPLICIT_TX_RE = re.compile(r"\bIN\s+TRANSACTIONS\b", re.IGNORECASE)
 
 def _get_driver(neo_info : Dict[str, str]):
     try:
@@ -750,15 +751,18 @@ class Neo4jInstance:
                        parameters: Optional[Dict[str, Any]] = None
                       ):
         params = parameters or {}
+        kwargs = dict(params)
+        if rows is not None:
+            kwargs['rows'] = rows
         try:
-            if rows is not None:
-                results = session.execute_write(
-                    _write_transaction_function, query,
-                    rows = rows, **params).counters.__dict__
+            if _IMPLICIT_TX_RE.search(query):
+                # 'CALL { ... } IN TRANSACTIONS' is only valid in an implicit
+                # (auto-commit) transaction, so it can't go through execute_write.
+                results = session.run(query, **kwargs).consume().counters.__dict__
             else:
                 results = session.execute_write(
                     _write_transaction_function, query,
-                    **params).counters.__dict__
+                    **kwargs).counters.__dict__
         except ServiceUnavailable as exception:
             raise ServiceUnavailable() from exception
         except ClientError as exception:
