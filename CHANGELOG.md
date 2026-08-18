@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.0.2] - 2026-08-18
+
+### Fixed
+- `execute_write_query`/`execute_write_queries`: queries containing
+  `CALL { ... } IN TRANSACTIONS` no longer raise
+  `Neo.DatabaseError.Transaction.TransactionStartFailed`. Such queries require
+  an implicit (auto-commit) transaction, so they are now detected and run via
+  `session.run` instead of the managed `session.execute_write` transaction.
+
 ## [4.0.1] - 2026-08-06
 
 ### Fixed
