@@ -28,7 +28,11 @@ from .context import get_logger, get_batches, get_columns_diff
 
 _NODE_LABEL_RE = re.compile(r"\(:?(\w*)\)")
 _REL_TYPE_RE = re.compile(r"\[:?(\w*)\]")
-_IMPLICIT_TX_RE = re.compile(r"\bIN\s+TRANSACTIONS\b", re.IGNORECASE)
+_IMPLICIT_TX_RE = re.compile(
+    r"\bIN\s+(?:\d+\s+)?CONCURRENT\s+TRANSACTIONS\b"
+    r"|\bIN\s+TRANSACTIONS\b",
+    re.IGNORECASE,
+)
 
 def _get_driver(neo_info : Dict[str, str]):
     try:
@@ -197,8 +201,14 @@ class Neo4jInstance:
         params = parameters or {}
         with _get_session(self._driver, database) as session:
             try:
-                result = session.execute_read(
-                    _read_transaction_function,query=query,**params)
+                if _IMPLICIT_TX_RE.search(query):
+                    # 'CALL { ... } IN TRANSACTIONS' is only valid in an implicit
+                    # (auto-commit) transaction, so it can't go through execute_read.
+                    read_result = session.run(query, **params)
+                    result = DataFrame(read_result.values(), columns=read_result.keys())
+                else:
+                    result = session.execute_read(
+                        _read_transaction_function,query=query,**params)
             except ServiceUnavailable as exception:
                 raise ServiceUnavailable() from exception
             except ClientError as exception:
@@ -243,8 +253,15 @@ class Neo4jInstance:
         params = parameters or {}
         with _get_session(self._driver, database) as session:
             try:
-                graph = session.execute_read(
-                    _graph_transaction_function, query=query, **params)
+                if _IMPLICIT_TX_RE.search(query):
+                    # 'CALL { ... } IN TRANSACTIONS' is only valid in an implicit
+                    # (auto-commit) transaction, so it can't go through execute_read.
+                    graph_result = session.run(query, **params)
+                    list(graph_result)  # consume all records so .graph() is populated
+                    graph = graph_result.graph()
+                else:
+                    graph = session.execute_read(
+                        _graph_transaction_function, query=query, **params)
             except ServiceUnavailable as exception:
                 raise ServiceUnavailable() from exception
             except ClientError as exception:

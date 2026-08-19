@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.0.3] - 2026-08-19
+
+### Fixed
+- `execute_read_query`/`get_query_visualization`: queries containing
+  `CALL { ... } IN TRANSACTIONS` no longer raise
+  `Neo.DatabaseError.Transaction.TransactionStartFailed`. The 4.0.2 fix only
+  covered the write path (`_execute_write`); the read path still ran every
+  query through the managed `session.execute_read` transaction. Such queries
+  are now detected and run via `session.run` instead, same as the write path.
+- Implicit-transaction detection now also matches `CALL { ... } IN [n]
+  CONCURRENT TRANSACTIONS` (Neo4j 5.21+), not just plain `IN TRANSACTIONS`.
+  Both forms require an auto-commit transaction and previously only the
+  latter was detected.
+
 ## [4.0.2] - 2026-08-18
 
 ### Fixed

@@ -111,6 +111,20 @@ class TestWriteMethods(unittest.TestCase):
         self.assertEqual(
             {'nodes_created': 3, 'labels_added': 3, 'properties_set': 3}, result)
 
+    def test_execute_write_query_in_concurrent_transactions(self):
+        """Test a query with 'CALL { ... } IN CONCURRENT TRANSACTIONS', which
+        also requires an implicit transaction rather than the managed
+        transaction used by execute_write_query for regular queries."""
+        query = """
+            UNWIND range(1, 3) AS i
+            CALL (i) {
+                CREATE (:Actor {id: i})
+            } IN 2 CONCURRENT TRANSACTIONS OF 1 ROWS
+        """
+        result = self.graph.execute_write_query(query, self.db)
+        self.assertEqual(
+            {'nodes_created': 3, 'labels_added': 3, 'properties_set': 3}, result)
+
 
 class TestReadAndEdaMethods(unittest.TestCase):
     """Test read and EDA methods. Data is loaded once for the entire class."""
@@ -172,6 +186,22 @@ class TestReadAndEdaMethods(unittest.TestCase):
         result = self.graph.execute_read_query(
             query, self.db, {'movie_name': movie})
         self.assertEqual(movie, result['movie'][0])
+
+    def test_execute_read_query_in_transactions(self):
+        """Test a read query with 'CALL { ... } IN TRANSACTIONS', which requires
+        an implicit transaction rather than the managed transaction used by
+        execute_read_query for regular queries."""
+        plain_count = self.graph.execute_read_query(
+            "MATCH (p:Person) RETURN count(p) AS row_num", self.db)['row_num'][0]
+        query = """
+            MATCH (p:Person)
+            CALL (p) {
+                RETURN p AS person
+            } IN TRANSACTIONS OF 1000 ROWS
+            RETURN count(person) AS row_num
+        """
+        result = self.graph.execute_read_query(query, self.db)
+        self.assertEqual(plain_count, result['row_num'][0])
 
     def test_get_node_label_freq(self):
         """Test node label frequency EDA."""
