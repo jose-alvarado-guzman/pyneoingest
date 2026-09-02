@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.0.4] - 2026-09-02
+
+### Fixed
+- `execute_read_query`, `get_query_visualization`, and the write path
+  (`_execute_write`): queries containing `CALL { ... } IN TRANSACTIONS` or
+  `IN [n] CONCURRENT TRANSACTIONS` run via `session.run` instead of a
+  managed transaction, since Neo4j only allows those clauses in an
+  auto-commit transaction. Because of that, they didn't get the driver's
+  built-in managed-transaction retry behavior on transient failures like
+  `ServiceUnavailable`. They're now retried manually (exponential backoff,
+  5 attempts by default) via a new `_run_autocommit_with_retry` helper.
+
 ## [4.0.3] - 2026-08-19
 
 ### Fixed
