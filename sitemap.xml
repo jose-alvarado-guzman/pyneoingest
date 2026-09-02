@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+    <url>
+         <loc>https://jose-alvarado-guzman.github.io/pyneoingest/</loc>
+         <lastmod>2026-09-02</lastmod>
+    </url>
+    <url>
+         <loc>https://jose-alvarado-guzman.github.io/pyneoingest/api-reference/</loc>
+         <lastmod>2026-09-02</lastmod>
+    </url>
+    <url>
+         <loc>https://jose-alvarado-guzman.github.io/pyneoingest/eda/</loc>
+         <lastmod>2026-09-02</lastmod>
+    </url>
+    <url>
+         <loc>https://jose-alvarado-guzman.github.io/pyneoingest/getting-started/</loc>
+         <lastmod>2026-09-02</lastmod>
+    </url>
+    <url>
+         <loc>https://jose-alvarado-guzman.github.io/pyneoingest/visualization/</loc>
+         <lastmod>2026-09-02</lastmod>
+    </url>
+</urlset>
