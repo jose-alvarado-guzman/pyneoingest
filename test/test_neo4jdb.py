@@ -10,10 +10,14 @@
 """
 import os
 import unittest
+from contextlib import contextmanager
+from unittest.mock import patch
+import neo4j
 import pandas as pd
 import numpy as np
 import pandas.testing as pd_testing
 from neo4j.exceptions import ClientError
+from neo4j.exceptions import ServiceUnavailable
 from neo4j_viz import VisualizationGraph
 from .context import database
 from .context import fileload
@@ -38,6 +42,32 @@ def _load_queries():
 def _clean_db(graph, db):
     graph.execute_write_queries(
         ["CALL apoc.schema.assert({},{})", "MATCH(n) DETACH DELETE n"], db)
+
+
+@contextmanager
+def _patch_flaky_session_run(fail_times=1):
+    """Patch neo4j.Session.run so the first `fail_times` calls raise a
+    transient ServiceUnavailable, then delegate to the real driver.
+
+    Used to verify that 'IN TRANSACTIONS'/'IN CONCURRENT TRANSACTIONS'
+    queries (which go through session.run rather than execute_read/
+    execute_write, and so don't get the driver's built-in managed-
+    transaction retries) are retried by the manual retry wrapper instead
+    of failing outright. Also patches time.sleep so the retry backoff
+    doesn't slow the test down.
+    """
+    original_run = neo4j.Session.run
+    call_count = {'n': 0}
+
+    def flaky_run(session_self, *args, **kwargs):
+        call_count['n'] += 1
+        if call_count['n'] <= fail_times:
+            raise ServiceUnavailable('simulated transient failure')
+        return original_run(session_self, *args, **kwargs)
+
+    with patch.object(neo4j.Session, 'run', flaky_run), \
+         patch.object(database.neo4jdbms.time, 'sleep', return_value=None):
+        yield call_count
 
 
 class TestWriteMethods(unittest.TestCase):
@@ -125,6 +155,24 @@ class TestWriteMethods(unittest.TestCase):
         self.assertEqual(
             {'nodes_created': 3, 'labels_added': 3, 'properties_set': 3}, result)
 
+    def test_execute_write_query_in_transactions_retries_on_transient_failure(self):
+        """An 'IN TRANSACTIONS' write query is retried and still succeeds
+        after a transient ServiceUnavailable failure, since it goes through
+        session.run (not execute_write) and isn't covered by the driver's
+        built-in managed-transaction retries."""
+        query = """
+            UNWIND range(1, 3) AS i
+            CALL (i) {
+                CREATE (:Actor {id: i})
+            } IN TRANSACTIONS OF 1 ROWS
+        """
+        with _patch_flaky_session_run(fail_times=1) as call_count:
+            result = self.graph.execute_write_query(query, self.db)
+
+        self.assertEqual(call_count['n'], 2)
+        self.assertEqual(
+            {'nodes_created': 3, 'labels_added': 3, 'properties_set': 3}, result)
+
 
 class TestReadAndEdaMethods(unittest.TestCase):
     """Test read and EDA methods. Data is loaded once for the entire class."""
@@ -201,6 +249,26 @@ class TestReadAndEdaMethods(unittest.TestCase):
             RETURN count(person) AS row_num
         """
         result = self.graph.execute_read_query(query, self.db)
+        self.assertEqual(plain_count, result['row_num'][0])
+
+    def test_execute_read_query_in_transactions_retries_on_transient_failure(self):
+        """An 'IN TRANSACTIONS' read query is retried and still succeeds
+        after a transient ServiceUnavailable failure, since it goes through
+        session.run (not execute_read) and isn't covered by the driver's
+        built-in managed-transaction retries."""
+        plain_count = self.graph.execute_read_query(
+            "MATCH (p:Person) RETURN count(p) AS row_num", self.db)['row_num'][0]
+        query = """
+            MATCH (p:Person)
+            CALL (p) {
+                RETURN p AS person
+            } IN TRANSACTIONS OF 1000 ROWS
+            RETURN count(person) AS row_num
+        """
+        with _patch_flaky_session_run(fail_times=1) as call_count:
+            result = self.graph.execute_read_query(query, self.db)
+
+        self.assertEqual(call_count['n'], 2)
         self.assertEqual(plain_count, result['row_num'][0])
 
     def test_get_node_label_freq(self):

@@ -15,12 +15,15 @@ from concurrent.futures import ThreadPoolExecutor
 import logging
 import os
 import re
+import time
 from pandas import DataFrame
 from neo4j import GraphDatabase
 from pyvis.network import Network
 from neo4j_viz import VisualizationGraph
 from neo4j_viz.neo4j import from_neo4j
 from neo4j.exceptions import ServiceUnavailable
+from neo4j.exceptions import SessionExpired
+from neo4j.exceptions import TransientError
 from neo4j.exceptions import AuthError
 from neo4j.exceptions import ClientError
 from neo4j.exceptions import ConfigurationError
@@ -33,6 +36,53 @@ _IMPLICIT_TX_RE = re.compile(
     r"|\bIN\s+TRANSACTIONS\b",
     re.IGNORECASE,
 )
+
+# Errors treated as transient/retryable for auto-commit queries (run via
+# session.run). session.execute_read/execute_write retry these automatically
+# through the driver's managed-transaction logic; session.run does not.
+_RETRYABLE_EXCEPTIONS = (ServiceUnavailable, SessionExpired, TransientError)
+
+
+def _run_autocommit_with_retry(session, consume, query, max_retries=5,
+                                initial_delay=1.0, backoff_factor=2.0, **kwargs):
+    """Run an auto-commit query (via session.run) with manual retry.
+
+    Queries using ``CALL { ... } IN TRANSACTIONS`` or
+    ``IN CONCURRENT TRANSACTIONS`` are only valid in an implicit
+    (auto-commit) transaction, so they can't be executed through
+    session.execute_read/execute_write and don't benefit from the driver's
+    built-in managed-transaction retry behavior. This re-runs the query and
+    re-consumes its result from scratch on transient failures such as
+    ServiceUnavailable.
+
+    Parameters
+    ----------
+    session : neo4j.Session
+        The session to run the query on.
+    consume : Callable[[neo4j.Result], Any]
+        Function that consumes the Result object (e.g. reads values, builds
+        a graph, reads counters) and returns the desired output.
+    query : str
+        The Cypher query to run.
+    max_retries : int, optional
+        Maximum number of retry attempts after the initial try.
+    initial_delay : float, optional
+        Delay in seconds before the first retry.
+    backoff_factor : float, optional
+        Multiplier applied to the delay after each subsequent retry.
+    kwargs
+        Cypher query parameters.
+    """
+    delay = initial_delay
+    for attempt in range(max_retries + 1):
+        try:
+            result = session.run(query, **kwargs)
+            return consume(result)
+        except _RETRYABLE_EXCEPTIONS:
+            if attempt == max_retries:
+                raise
+            time.sleep(delay)
+            delay *= backoff_factor
 
 def _get_driver(neo_info : Dict[str, str]):
     try:
@@ -204,8 +254,11 @@ class Neo4jInstance:
                 if _IMPLICIT_TX_RE.search(query):
                     # 'CALL { ... } IN TRANSACTIONS' is only valid in an implicit
                     # (auto-commit) transaction, so it can't go through execute_read.
-                    read_result = session.run(query, **params)
-                    result = DataFrame(read_result.values(), columns=read_result.keys())
+                    # session.run isn't retried by the driver, so retry manually.
+                    result = _run_autocommit_with_retry(
+                        session,
+                        lambda r: DataFrame(r.values(), columns=r.keys()),
+                        query, **params)
                 else:
                     result = session.execute_read(
                         _read_transaction_function,query=query,**params)
@@ -256,9 +309,12 @@ class Neo4jInstance:
                 if _IMPLICIT_TX_RE.search(query):
                     # 'CALL { ... } IN TRANSACTIONS' is only valid in an implicit
                     # (auto-commit) transaction, so it can't go through execute_read.
-                    graph_result = session.run(query, **params)
-                    list(graph_result)  # consume all records so .graph() is populated
-                    graph = graph_result.graph()
+                    # session.run isn't retried by the driver, so retry manually.
+                    def _consume_graph(result):
+                        list(result)  # consume records so .graph() is populated
+                        return result.graph()
+                    graph = _run_autocommit_with_retry(
+                        session, _consume_graph, query, **params)
                 else:
                     graph = session.execute_read(
                         _graph_transaction_function, query=query, **params)
@@ -775,7 +831,10 @@ class Neo4jInstance:
             if _IMPLICIT_TX_RE.search(query):
                 # 'CALL { ... } IN TRANSACTIONS' is only valid in an implicit
                 # (auto-commit) transaction, so it can't go through execute_write.
-                results = session.run(query, **kwargs).consume().counters.__dict__
+                # session.run isn't retried by the driver, so retry manually.
+                results = _run_autocommit_with_retry(
+                    session, lambda r: r.consume().counters.__dict__,
+                    query, **kwargs)
             else:
                 results = session.execute_write(
                     _write_transaction_function, query,
