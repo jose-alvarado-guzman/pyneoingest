@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.0.5] - 2026-11-02
+
+### Fixed
+- Importing `pyneoinstance` on Google Colab no longer fails with
+  `ModuleNotFoundError: No module named 'comm'` or
+  `TypeError: type 'Instance' is not subscriptable`. Both came from
+  `neo4j-viz`/`anywidget` under-declaring their dependencies: they import
+  `comm` directly but rely on ipywidgets 8 to install it (Colab ships
+  ipywidgets 7), and subclass `traitlets.Instance[...]`, which requires
+  traitlets 5.10+, while only declaring `traitlets>=5`. `comm>=0.1.3` and
+  `traitlets>=5.10.0` are now declared as direct dependencies.
+- `get_rela_source_target_freq`: replaced the `inplace=True` calls on
+  `sort_values`/`reset_index`, which are deprecated in pandas 3.1 and emit a
+  `Pandas4Warning`.
+
 ## [4.0.4] - 2026-09-02
 
 ### Fixed
