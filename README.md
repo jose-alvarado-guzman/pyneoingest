@@ -263,42 +263,42 @@ The get_node_label_freq method provides the frequency and relative frequency of 
 ```python
 graph.get_node_label_freq(database='mydbname')
 ```
-<img src="https://s3.amazonaws.com/neo4j-ps-ds-bootcamp/img/nodefreq.png" width="250">
+<img src="https://raw.githubusercontent.com/jose-alvarado-guzman/pyneoingest/main/images/nodefreq.png" width="250">
 
 ### Relationship Type Frequency
 The get_rela_type_freq method provides the frequency and relative frequency of all relationship types in the graph.
 ```python
 graph.get_rela_type_freq(database='mydbname')
 ```
-<img src="https://s3.amazonaws.com/neo4j-ps-ds-bootcamp/img/relaFreq.png" width="300">
+<img src="https://raw.githubusercontent.com/jose-alvarado-guzman/pyneoingest/main/images/relaFreq.png" width="300">
 
 ### Relationship Source-Target Frequency
 The get_rela_source_target_freq method provides the frequency and relative frequency of all relationship types considering the node label of the source and targets of the relationships.
 ```python
 graph.get_rela_type_freq(database='mydbname')
 ```
-<img src="https://s3.amazonaws.com/neo4j-ps-ds-bootcamp/img/relaSourceTargetFreq.png" width="300">
+<img src="https://raw.githubusercontent.com/jose-alvarado-guzman/pyneoingest/main/images/relaSourceTargetFreq.png" width="300">
 
 ### Properties
 The get_properties method provides information about all the nodes and relationships properties.
 ```python
 graph.get_properties(database='mydbname')
 ```
-<img src="https://s3.amazonaws.com/neo4j-ps-ds-bootcamp/img/properties.png" width="350" hight="300">
+<img src="https://raw.githubusercontent.com/jose-alvarado-guzman/pyneoingest/main/images/properties.png" width="350" hight="300">
 
 ### Constraints
 The get_constraints method provides information about all the graph constraints.
 ```python
 graph.get_constraints(database='mydbname')
 ```
-<img src="https://s3.amazonaws.com/neo4j-ps-ds-bootcamp/img/constraints.png" width="350" hight="300">
+<img src="https://raw.githubusercontent.com/jose-alvarado-guzman/pyneoingest/main/images/constraints.png" width="350" hight="300">
 
 ### Indexes
 The get_indexes method provides information about all the graph indexes.
 ```python
 graph.get_indexes(database='mydbname')
 ```
-<img src="https://s3.amazonaws.com/neo4j-ps-ds-bootcamp/img/indexes.png" width="450" hight="400">
+<img src="https://raw.githubusercontent.com/jose-alvarado-guzman/pyneoingest/main/images/indexes.png" width="450" hight="400">
 
 ### Query Graph Visualization
 The `get_query_visualization` method executes a Cypher query that returns nodes and relationships and renders the result as an interactive graph. Node labels are displayed as captions and all properties appear as tooltips on hover.
@@ -330,8 +330,8 @@ schema.write_html('schema.html')
 
 Open `schema.html` in your browser to explore the schema interactively.
 
-<img src="https://s3.amazonaws.com/neo4j-ps-ds-bootcamp/img/schema.png" width="450" hight="400">
-<img src="https://s3.amazonaws.com/neo4j-ps-ds-bootcamp/img/schemaHtml.png" width="450" hight="400">
+<img src="https://raw.githubusercontent.com/jose-alvarado-guzman/pyneoingest/main/images/schema.png" width="450" hight="400">
+<img src="https://raw.githubusercontent.com/jose-alvarado-guzman/pyneoingest/main/images/schemaHtml.png" width="450" hight="400">
 
 ## More detailed examples
 
