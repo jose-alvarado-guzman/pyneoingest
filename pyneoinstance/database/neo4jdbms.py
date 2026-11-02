@@ -751,8 +751,8 @@ class Neo4jInstance:
                     'targetLabel': nodes[1], 'frequency': value}
             stats_dicts.append(info)
         stats_df = DataFrame(stats_dicts)
-        stats_df.sort_values(by=['relationshipType','sourceLabel','targetLabel'],inplace=True)
-        stats_df.reset_index(drop=True, inplace=True)
+        stats_df = stats_df.sort_values(by=['relationshipType','sourceLabel','targetLabel'])
+        stats_df = stats_df.reset_index(drop=True)
         return stats_df
 
     def get_schema_visualization(self, database: Optional[str] = None) -> Network:
