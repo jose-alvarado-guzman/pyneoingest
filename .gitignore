@@ -131,3 +131,6 @@ site/
 
 # macOS
 .DS_Store
+
+# Claude Code local (machine-specific) instructions
+CLAUDE.local.md
